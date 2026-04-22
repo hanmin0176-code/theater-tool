@@ -1,0 +1,781 @@
+{
+  "blocks": [
+    {
+      "id": "tpl_1",
+      "kind": "module",
+      "moduleType": "title",
+      "content": "2회차 소녀들의 상영회 — 2부 1화",
+      "textStyle": {
+        "fontSize": 24,
+        "bold": true,
+        "italic": false,
+        "color": "#e8e0d0"
+      }
+    },
+    {
+      "id": "tpl_2",
+      "kind": "module",
+      "moduleType": "subtitle",
+      "content": "엔딩 3개월 후 · 히로 시점 · 동기층위 해부",
+      "textStyle": {
+        "fontSize": 13,
+        "bold": false,
+        "italic": false,
+        "color": "#9a9080"
+      }
+    },
+    {
+      "id": "tpl_3",
+      "kind": "module",
+      "moduleType": "narration",
+      "content": "상영회는 워든의 당황스러운 요청으로 시작됐다.\n\n유키가 사라진 지 한 달이 지났다. 위에서는 대마녀의 흔적을 추적하기 위해 이 감옥에서 일어난 일의 과정을 다시 검토해달라고 했다. 워든은 그 해결책으로 필름을 꺼냈다. 유키가 기억공유 마법과 염사 마법으로 히로의 루프 기억을 사진으로 현상해 두었던 것이다.\n\n히로가 **프라이버시**라고 말했다.\n\n워든이 **올바르지 못하다는 건 압니다만**이라고 대꾸했다.\n\n메루루가 손을 들었다. **대마녀님이 보고 싶어요**라고 말했다.\n\n그래서 열세 명이 다시 라운지에 모였다.",
+      "textStyle": {
+        "fontSize": 14,
+        "bold": false,
+        "italic": false,
+        "color": "#9a9080"
+      }
+    },
+    {
+      "id": "tpl_20",
+      "kind": "scene",
+      "name": "Scene 01 에마를 즉시 밀어내고 복구를 거절",
+      "blocks": [
+        {
+          "id": "tpl_4",
+          "type": "sceneHeader",
+          "sceneNumber": "Scene 01",
+          "title": "에마를 즉시 밀어내고 복구를 거절",
+          "desc": "루프 회귀 직후. 이층 침대 위에서 눈을 뜬 히로가 에마와 재회한다. 에마가 //\"다시 친구가 될 수 있을까\"//라고 묻자, 히로는 //\"나는 너를 용서할 수 없고, 그 사실은 변하지 않아\"//라고 답한다.",
+          "imageLabel": "인게임 스크린샷",
+          "titleStyle": {
+            "fontSize": 13,
+            "bold": true,
+            "italic": false,
+            "color": "#e8e0d0"
+          },
+          "descStyle": {
+            "fontSize": 13,
+            "bold": false,
+            "italic": false,
+            "color": "#9a9080"
+          }
+        },
+        {
+          "id": "tpl_5",
+          "type": "character",
+          "characterId": "etc",
+          "role": "행동/결정",
+          "text": "//\"나는 너를 용서할 수 없고, 그 사실은 변하지 않아.\" 에마가 손을 뻗었지만 뿌리쳤다. 복도를 향해 혼자 걸어나갔다.//",
+          "textStyle": {
+            "fontSize": 14,
+            "bold": false,
+            "italic": false,
+            "color": "#e8e0d0"
+          }
+        },
+        {
+          "id": "tpl_6",
+          "type": "character",
+          "characterId": "etc",
+          "role": "질문",
+          "text": "루프 기억이 있는 상태에서 제일 먼저 한 게 이거야. 모두가 어떻게 죽는지 다 알고 있는데, 첫 번째 생각이 에마를 밀어내는 거였어?",
+          "textStyle": {
+            "fontSize": 14,
+            "bold": false,
+            "italic": false,
+            "color": "#e8e0d0"
+          }
+        },
+        {
+          "id": "tpl_7",
+          "type": "character",
+          "characterId": "etc",
+          "role": "표면 동기",
+          "text": "[color=#a0b890]감정 자극을 차단하고 감옥 생활을 안정적으로 시작해야 했어. 1회차에서 에마와의 재회가 마녀화의 직접적인 트리거였으니까.[/color]",
+          "textStyle": {
+            "fontSize": 14,
+            "bold": false,
+            "italic": false,
+            "color": "#e8e0d0"
+          }
+        },
+        {
+          "id": "tpl_8",
+          "type": "character",
+          "characterId": "etc",
+          "role": "직접 트리거",
+          "text": "[color=#b0a080]룸메이트로 재회한 것 자체. 그리고 에마의 얼굴을 보는 순간 유키 자살 기억이 즉각 재점화된 것.[/color]",
+          "textStyle": {
+            "fontSize": 14,
+            "bold": false,
+            "italic": false,
+            "color": "#e8e0d0"
+          }
+        },
+        {
+          "id": "tpl_9",
+          "type": "character",
+          "characterId": "etc",
+          "role": "실제 감정 동기",
+          "text": "[color=#e8c080]트라우마 재점화. 분노, 혐오, 공포. 그리고 괜찮을 줄 알았는데 괜찮지 않다는 사실 자체에 대한 공황.[/color]",
+          "textStyle": {
+            "fontSize": 14,
+            "bold": false,
+            "italic": false,
+            "color": "#e8e0d0"
+          }
+        },
+        {
+          "id": "tpl_10",
+          "type": "character",
+          "characterId": "etc",
+          "role": "자기 합리화",
+          "text": "[color=#d08080]에마를 배제하는 것이 올바르고 이성적인 판단이라고 믿었어. 감정이 아니라 논리로 결정했다고.[/color]",
+          "textStyle": {
+            "fontSize": 14,
+            "bold": false,
+            "italic": false,
+            "color": "#e8e0d0"
+          }
+        },
+        {
+          "id": "tpl_11",
+          "type": "character",
+          "characterId": "etc",
+          "role": "관계적 맥락",
+          "text": "[color=#80a0c0]에마 쪽은 복원 희망만 남아 있고, 히로 쪽만 원흉으로 고정된 상태. 같은 재회인데 출발점 자체가 달라.[/color]",
+          "textStyle": {
+            "fontSize": 14,
+            "bold": false,
+            "italic": false,
+            "color": "#e8e0d0"
+          }
+        },
+        {
+          "id": "tpl_12",
+          "type": "character",
+          "characterId": "etc",
+          "role": "서사적 기능",
+          "text": "[color=#9a9080]1부에선 플레이어가 에마 시점으로 이 장면을 봤고, 2부에선 히로 시점으로 다시 보는 거잖아요. 같은 재회가 완전히 다른 감각으로 뒤집히는 순간이에요.[/color]",
+          "textStyle": {
+            "fontSize": 14,
+            "bold": false,
+            "italic": false,
+            "color": "#e8e0d0"
+          }
+        },
+        {
+          "id": "tpl_13",
+          "type": "character",
+          "characterId": "etc",
+          "role": "플레이어 체감 설득력",
+          "text": "[color=#c8a96e]높음. 감정 논리는 선명하나 객관 판단은 편향 큼. 히로가 \"괜찮아, 나는 올바르게 행동할 수 있어\"라고 다짐하면서 바로 \"어째서 또 내 앞에 나타난 거지\"라고 생각하는 것 자체가 이미 실패의 증거.[/color]",
+          "textStyle": {
+            "fontSize": 14,
+            "bold": false,
+            "italic": false,
+            "color": "#e8e0d0"
+          }
+        },
+        {
+          "id": "tpl_14",
+          "type": "afterword",
+          "title": "서술신뢰도",
+          "text": "에마가 넘어지는 장면 히로의 독백: //\"이것이 에마의 본성이다. 지난번에도 이런 수법을 썼다.\"// — 이번엔 밀치지 않았다. 에마는 혼자 넘어졌다. 객관 사실과 히로의 해석이 처음부터 어긋나 있다.",
+          "textStyle": {
+            "fontSize": 12,
+            "bold": false,
+            "italic": false,
+            "color": "#9a9080"
+          }
+        },
+        {
+          "id": "tpl_19",
+          "type": "tikitaka",
+          "title": "????",
+          "lines": [
+            {
+              "id": "tpl_15",
+              "speaker": "에마",
+              "text": "\"나 진짜로 넘어진 거야.\""
+            },
+            {
+              "id": "tpl_16",
+              "speaker": "한나",
+              "text": "\"저도 봤어요. 진짜로 넘어졌어요.\""
+            },
+            {
+              "id": "tpl_17",
+              "speaker": "히로",
+              "text": "\"……그렇군.\""
+            },
+            {
+              "id": "tpl_18",
+              "speaker": "에마",
+              "text": "그렇군이 뭐야!!"
+            }
+          ],
+          "textStyle": {
+            "fontSize": 13,
+            "bold": false,
+            "italic": false,
+            "color": "#9a9080"
+          }
+        }
+      ]
+    },
+    {
+      "id": "tpl_39",
+      "kind": "scene",
+      "name": "Scene 02 라운지에서 강압적으로 질서 장악",
+      "blocks": [
+        {
+          "id": "tpl_21",
+          "type": "sceneHeader",
+          "sceneNumber": "Scene 02",
+          "title": "라운지에서 강압적으로 질서 장악",
+          "desc": "라운지에 모인 13명 앞에서 히로가 혼자 앞으로 나와 박수를 치며 자기소개를 강제로 진행한다. 모두의 이름을 이미 알고 있어서 한 명씩 불러내며 정리한다. //\"이제 방의 주도권이 내게 있다고 느껴.\"//",
+          "imageLabel": "인게임 스크린샷",
+          "titleStyle": {
+            "fontSize": 13,
+            "bold": true,
+            "italic": false,
+            "color": "#e8e0d0"
+          },
+          "descStyle": {
+            "fontSize": 13,
+            "bold": false,
+            "italic": false,
+            "color": "#9a9080"
+          }
+        },
+        {
+          "id": "tpl_22",
+          "type": "character",
+          "characterId": "etc",
+          "role": "행동/결정",
+          "text": "//\"모두 처음 만나는 사이니, 자기소개를 하자!\" — 아무도 시키지 않았는데 혼자 중앙에 서서 진행을 장악했다.//",
+          "textStyle": {
+            "fontSize": 14,
+            "bold": false,
+            "italic": false,
+            "color": "#e8e0d0"
+          }
+        },
+        {
+          "id": "tpl_23",
+          "type": "character",
+          "characterId": "etc",
+          "role": "질문",
+          "text": "저 자리 원래 내 거였는데. 정보를 정리하려면 마녀 도감 앱을 켜면 됐잖아. 이름이 다 거기 있었는데, 굳이 직접 한 명씩 왜 불렀어?",
+          "textStyle": {
+            "fontSize": 14,
+            "bold": false,
+            "italic": false,
+            "color": "#e8e0d0"
+          }
+        },
+        {
+          "id": "tpl_24",
+          "type": "character",
+          "characterId": "etc",
+          "role": "표면 동기",
+          "text": "[color=#a0b890]정보 정리와 집단 통제. 모두가 패닉 상태였고 빠르게 정리가 필요했어.[/color]",
+          "textStyle": {
+            "fontSize": 14,
+            "bold": false,
+            "italic": false,
+            "color": "#e8e0d0"
+          }
+        },
+        {
+          "id": "tpl_25",
+          "type": "character",
+          "characterId": "etc",
+          "role": "직접 트리거",
+          "text": "[color=#b0a080]전원 패닉 상태. 그리고 루프 기억으로 이미 모든 이름을 알고 있다는 것 자체.[/color]",
+          "textStyle": {
+            "fontSize": 14,
+            "bold": false,
+            "italic": false,
+            "color": "#e8e0d0"
+          }
+        },
+        {
+          "id": "tpl_26",
+          "type": "character",
+          "characterId": "etc",
+          "role": "실제 감정 동기",
+          "text": "[color=#e8c080]정이 들기 전에 거리를 만들어야 한다는 강박. 개인으로 알게 되면 정서적 노출이 생기고, 그걸 차단하려면 모두를 관리 대상으로 먼저 포지셔닝해야 했던 거야.[/color]",
+          "textStyle": {
+            "fontSize": 14,
+            "bold": false,
+            "italic": false,
+            "color": "#e8e0d0"
+          }
+        },
+        {
+          "id": "tpl_27",
+          "type": "character",
+          "characterId": "etc",
+          "role": "자기 합리화",
+          "text": "[color=#d08080]이름과 역할을 먼저 정리해야 올바른 질서가 선다. 혼란을 빠르게 끝내는 것이 모두에게 이득이다.[/color]",
+          "textStyle": {
+            "fontSize": 14,
+            "bold": false,
+            "italic": false,
+            "color": "#e8e0d0"
+          }
+        },
+        {
+          "id": "tpl_28",
+          "type": "character",
+          "characterId": "etc",
+          "role": "관계적 맥락",
+          "text": "[color=#80a0c0]레이아가 주도권 경쟁을 의식하고 옆자리에 앉은 이유가 여기 있어. 히로도 레이아가 자기를 경계하고 있다는 걸 알면서 말이 통할 것 같다고 평가했고. 둘 다 상대를 이용 가능한 카드로 먼저 분류했어.[/color]",
+          "textStyle": {
+            "fontSize": 14,
+            "bold": false,
+            "italic": false,
+            "color": "#e8e0d0"
+          }
+        },
+        {
+          "id": "tpl_29",
+          "type": "character",
+          "characterId": "etc",
+          "role": "서사적 기능",
+          "text": "[color=#9a9080]1부에선 레이아가 자연스러운 리더였고 히로는 나중에 주목받는 인물이었잖아요. 2부에서 이 장면은 그 구도를 처음부터 뒤집어요. 안정감 있는 리더십이 위압감으로 느껴지는 순간.[/color]",
+          "textStyle": {
+            "fontSize": 14,
+            "bold": false,
+            "italic": false,
+            "color": "#e8e0d0"
+          }
+        },
+        {
+          "id": "tpl_30",
+          "type": "character",
+          "characterId": "etc",
+          "role": "플레이어 체감 설득력",
+          "text": "[color=#c8a96e]높음. 유능하고 효율적인 건 맞는데, 그게 오히려 불편하다. 히로 본인도 끝에 가서 \"조금 일을 너무 서두른 걸까\"라고 인정한다. — 혹은 정이 드는 것을 피하고 싶었던 것인지도, 라고.[/color]",
+          "textStyle": {
+            "fontSize": 14,
+            "bold": false,
+            "italic": false,
+            "color": "#e8e0d0"
+          }
+        },
+        {
+          "id": "tpl_38",
+          "type": "tikitaka",
+          "title": "????",
+          "lines": [
+            {
+              "id": "tpl_31",
+              "speaker": "코코",
+              "text": "\"뭐야 이 자식은……\""
+            },
+            {
+              "id": "tpl_32",
+              "speaker": "히로",
+              "text": "\"빨리 자기소개를 해 주지 않을래?\""
+            },
+            {
+              "id": "tpl_33",
+              "speaker": "코코 (지금)",
+              "text": "당시 진짜 무서웠어."
+            },
+            {
+              "id": "tpl_34",
+              "speaker": "히로",
+              "text": "알고 있어."
+            },
+            {
+              "id": "tpl_35",
+              "speaker": "코코",
+              "text": "그걸 알면서 했어?"
+            },
+            {
+              "id": "tpl_36",
+              "speaker": "히로",
+              "text": "……그래."
+            },
+            {
+              "id": "tpl_37",
+              "speaker": "코코",
+              "text": "야 진짜."
+            }
+          ],
+          "textStyle": {
+            "fontSize": 13,
+            "bold": false,
+            "italic": false,
+            "color": "#9a9080"
+          }
+        }
+      ]
+    },
+    {
+      "id": "tpl_57",
+      "kind": "scene",
+      "name": "Scene 03 노아를 먹이고 씻기고 그림 장소를 찾아줌",
+      "blocks": [
+        {
+          "id": "tpl_40",
+          "type": "sceneHeader",
+          "sceneNumber": "Scene 03",
+          "title": "노아를 먹이고 씻기고 그림 장소를 찾아줌",
+          "desc": "식사 자리에 오지 않은 노아를 찾아 방에 식판을 들고 나타났다. 스프레이로 물든 방을 보고 혼내다가, 기운이 빠진 노아에게 아틀리에를 찾아주겠다고 약속한다. 다음날 아침 노아 입가를 직접 닦아줬다.",
+          "imageLabel": "인게임 스크린샷",
+          "titleStyle": {
+            "fontSize": 13,
+            "bold": true,
+            "italic": false,
+            "color": "#e8e0d0"
+          },
+          "descStyle": {
+            "fontSize": 13,
+            "bold": false,
+            "italic": false,
+            "color": "#9a9080"
+          }
+        },
+        {
+          "id": "tpl_41",
+          "type": "character",
+          "characterId": "etc",
+          "role": "질문",
+          "text": "나한테 진짜로 화났어? 근데 밥은 챙겨줬잖아. 그게 다야?",
+          "textStyle": {
+            "fontSize": 14,
+            "bold": false,
+            "italic": false,
+            "color": "#e8e0d0"
+          }
+        },
+        {
+          "id": "tpl_42",
+          "type": "character",
+          "characterId": "etc",
+          "role": "표면 동기",
+          "text": "[color=#a0b890]규칙 유지와 사고 예방. 식사는 해야 한다. 방에서 스프레이를 뿌리면 안 된다. 그것뿐이야.[/color]",
+          "textStyle": {
+            "fontSize": 14,
+            "bold": false,
+            "italic": false,
+            "color": "#e8e0d0"
+          }
+        },
+        {
+          "id": "tpl_43",
+          "type": "character",
+          "characterId": "etc",
+          "role": "직접 트리거",
+          "text": "[color=#b0a080]무단 낙서, 불참, 위생 문제. 그리고 남에게 맞출 생각이 없는 노아의 모습이 유키를 닮았다는 생각.[/color]",
+          "textStyle": {
+            "fontSize": 14,
+            "bold": false,
+            "italic": false,
+            "color": "#e8e0d0"
+          }
+        },
+        {
+          "id": "tpl_44",
+          "type": "character",
+          "characterId": "etc",
+          "role": "실제 감정 동기",
+          "text": "[color=#e8c080]통제 욕구 속에서도 약한 존재를 돌보는 습관. 유키 연상 때문에 더 내버려 둘 수 없었던 것.[/color]",
+          "textStyle": {
+            "fontSize": 14,
+            "bold": false,
+            "italic": false,
+            "color": "#e8e0d0"
+          }
+        },
+        {
+          "id": "tpl_45",
+          "type": "character",
+          "characterId": "etc",
+          "role": "자기 합리화",
+          "text": "[color=#d08080]그저 올바른 생활을 시키는 것뿐이다. 레이아가 \"착하네\"라고 했을 때 속으로 코웃음이 나왔어.[/color]",
+          "textStyle": {
+            "fontSize": 14,
+            "bold": false,
+            "italic": false,
+            "color": "#e8e0d0"
+          }
+        },
+        {
+          "id": "tpl_46",
+          "type": "character",
+          "characterId": "etc",
+          "role": "관계적 맥락",
+          "text": "[color=#80a0c0]히로가 에마에게는 말 걸지 말라고 했고, 노아에게는 내일 식사 시간에 오라고 했어. 같은 날, 같은 히로가. 스트레스 원인이 달랐다는 게 변명이 되진 않아.[/color]",
+          "textStyle": {
+            "fontSize": 14,
+            "bold": false,
+            "italic": false,
+            "color": "#e8e0d0"
+          }
+        },
+        {
+          "id": "tpl_47",
+          "type": "character",
+          "characterId": "etc",
+          "role": "서사적 기능",
+          "text": "[color=#9a9080]히로가 단순 냉혈이 아니라는 층위를 1화에서 바로 부여하는 장치. 동시에 유키 연상이 노아를 통해서도 작동하고 있다는 걸 보여줘. 돌봄과 통제가 히로에게 항상 한 몸이라는 것도.[/color]",
+          "textStyle": {
+            "fontSize": 14,
+            "bold": false,
+            "italic": false,
+            "color": "#e8e0d0"
+          }
+        },
+        {
+          "id": "tpl_48",
+          "type": "character",
+          "characterId": "etc",
+          "role": "플레이어 체감 설득력",
+          "text": "[color=#c8a96e]높음. 통제와 돌봄이 함께 보여서 설득력이 큼. 히로가 가장 차가운 사람처럼 보이는 챕터에서 제일 먼저 인간적인 모습이 나오는 게 여기야.[/color]",
+          "textStyle": {
+            "fontSize": 14,
+            "bold": false,
+            "italic": false,
+            "color": "#e8e0d0"
+          }
+        },
+        {
+          "id": "tpl_49",
+          "type": "afterword",
+          "title": "시점역전비교",
+          "text": "1부에서 노아는 첫 희생자의 잔상이었다. 2부에서 노아는 히로가 매일 밥을 챙기고 입가를 닦아주는 생존 중인 사람이다. 살아있을 때의 난감함이 전부 보인다. 그 난감함을 감수하면서 챙기는 사람이 히로라는 게 더 선명해진다.",
+          "textStyle": {
+            "fontSize": 12,
+            "bold": false,
+            "italic": false,
+            "color": "#9a9080"
+          }
+        },
+        {
+          "id": "tpl_56",
+          "type": "tikitaka",
+          "title": "????",
+          "lines": [
+            {
+              "id": "tpl_50",
+              "speaker": "에마",
+              "text": "히로 쨩, 나한테는 말 걸지 말라고 했잖아."
+            },
+            {
+              "id": "tpl_51",
+              "speaker": "히로",
+              "text": "……."
+            },
+            {
+              "id": "tpl_52",
+              "speaker": "에마",
+              "text": "노아 쨩한테는 내일도 식사 시간에 오라고 했잖아."
+            },
+            {
+              "id": "tpl_53",
+              "speaker": "히로",
+              "text": "스트레스 원인이 달랐으니까."
+            },
+            {
+              "id": "tpl_54",
+              "speaker": "에마",
+              "text": "그 말, 나한테 엄청 상처가 되는 거 알아?"
+            },
+            {
+              "id": "tpl_55",
+              "speaker": "히로",
+              "text": "……알고 있어."
+            }
+          ],
+          "textStyle": {
+            "fontSize": 13,
+            "bold": false,
+            "italic": false,
+            "color": "#9a9080"
+          }
+        }
+      ]
+    },
+    {
+      "id": "tpl_74",
+      "kind": "scene",
+      "name": "Scene 04 마고를 밤새 간호 → 메루루를 사랑해서 죽임",
+      "blocks": [
+        {
+          "id": "tpl_58",
+          "type": "sceneHeader",
+          "sceneNumber": "Scene 04",
+          "title": "마고를 밤새 간호 → 메루루를 사랑해서 죽임",
+          "desc": "탈옥 실패 후 간수의 낫에 중상을 입은 마고를 메루루가 밤새 간호한다. 고열이 내리고 상태가 안정됐다. 그 며칠 뒤, 마고는 혼자 메루루의 방에 들어가 검으로 가슴을 찌른다. //\"사랑해서.\"//",
+          "imageLabel": "인게임 스크린샷",
+          "titleStyle": {
+            "fontSize": 13,
+            "bold": true,
+            "italic": false,
+            "color": "#e8e0d0"
+          },
+          "descStyle": {
+            "fontSize": 13,
+            "bold": false,
+            "italic": false,
+            "color": "#9a9080"
+          }
+        },
+        {
+          "id": "tpl_59",
+          "type": "character",
+          "characterId": "etc",
+          "role": "질문",
+          "text": "마고 씨. 저를 죽이는 게 무서웠나요.",
+          "textStyle": {
+            "fontSize": 14,
+            "bold": false,
+            "italic": false,
+            "color": "#e8e0d0"
+          }
+        },
+        {
+          "id": "tpl_60",
+          "type": "character",
+          "characterId": "etc",
+          "role": "표면 동기",
+          "text": "[color=#a0b890]……사랑의 응답.[/color]",
+          "textStyle": {
+            "fontSize": 14,
+            "bold": false,
+            "italic": false,
+            "color": "#e8e0d0"
+          }
+        },
+        {
+          "id": "tpl_61",
+          "type": "character",
+          "characterId": "etc",
+          "role": "직접 트리거",
+          "text": "[color=#b0a080]메루루의 극단적인 간병과 무조건적인 상냥함. 그리고 그 상냥함이 지속되면서 발생한 공포.[/color]",
+          "textStyle": {
+            "fontSize": 14,
+            "bold": false,
+            "italic": false,
+            "color": "#e8e0d0"
+          }
+        },
+        {
+          "id": "tpl_62",
+          "type": "character",
+          "characterId": "etc",
+          "role": "실제 감정 동기",
+          "text": "[color=#e8c080]사랑받는 자리의 공포. 배신되기 전에 소유하고 파괴하고 싶은 욕망. 먼저 잃는 것보다 먼저 끝내는 게 낫다는 왜곡된 계산.[/color]",
+          "textStyle": {
+            "fontSize": 14,
+            "bold": false,
+            "italic": false,
+            "color": "#e8e0d0"
+          }
+        },
+        {
+          "id": "tpl_63",
+          "type": "character",
+          "characterId": "etc",
+          "role": "자기 합리화",
+          "text": "[color=#d08080]죽여서 영원히 내 것으로 만드는 것이 사랑이라고 믿었어. 그때는.[/color]",
+          "textStyle": {
+            "fontSize": 14,
+            "bold": false,
+            "italic": false,
+            "color": "#e8e0d0"
+          }
+        },
+        {
+          "id": "tpl_64",
+          "type": "character",
+          "characterId": "etc",
+          "role": "관계적 맥락",
+          "text": "[color=#80a0c0]돌봄을 받은 환자가 간호자를 소유 대상으로 전환하는 구조. 마고가 그 상냥함이 계속될 거라고 믿기 힘들었기 때문에.[/color]",
+          "textStyle": {
+            "fontSize": 14,
+            "bold": false,
+            "italic": false,
+            "color": "#e8e0d0"
+          }
+        },
+        {
+          "id": "tpl_65",
+          "type": "character",
+          "characterId": "etc",
+          "role": "서사적 기능",
+          "text": "[color=#9a9080]이번 화를 퍼즐 추리가 아니라 관계의 귀결로 바꾸는 핵심이야. 범인 찾기보다 이 두 사람 사이에서 뭐가 파열됐는지가 중심이 되는 장르 전환 지점.[/color]",
+          "textStyle": {
+            "fontSize": 14,
+            "bold": false,
+            "italic": false,
+            "color": "#e8e0d0"
+          }
+        },
+        {
+          "id": "tpl_66",
+          "type": "character",
+          "characterId": "etc",
+          "role": "플레이어 체감 설득력",
+          "text": "[color=#c8a96e]중간. 정서 논리는 강하지만 현실 판단으로는 비약이 크다. 하지만 마고가 1부 내내 가장 계산적인 인물이었다는 걸 알고 나서 보면, 이 행동이 그 계산 바깥이라는 게 더 선명하게 무섭다.[/color]",
+          "textStyle": {
+            "fontSize": 14,
+            "bold": false,
+            "italic": false,
+            "color": "#e8e0d0"
+          }
+        },
+        {
+          "id": "tpl_73",
+          "type": "tikitaka",
+          "title": "????",
+          "lines": [
+            {
+              "id": "tpl_67",
+              "speaker": "마고",
+              "text": "무서웠어."
+            },
+            {
+              "id": "tpl_68",
+              "speaker": "마고",
+              "text": "하지만 더 무서운 건, 네가 먼저 나를 버리는 게 더 무서웠어."
+            },
+            {
+              "id": "tpl_69",
+              "speaker": "??",
+              "text": "아무도 아무 말도 하지 않았다."
+            },
+            {
+              "id": "tpl_70",
+              "speaker": "메루루",
+              "text": "저는 마고 씨를 버리지 않았을 거예요."
+            },
+            {
+              "id": "tpl_71",
+              "speaker": "마고",
+              "text": "……알아. 지금은 알아."
+            },
+            {
+              "id": "tpl_72",
+              "speaker": "마고",
+              "text": "그때는 몰랐어."
+            }
+          ],
+          "textStyle": {
+            "fontSize": 13,
+            "bold": false,
+            "italic": false,
+            "color": "#9a9080"
+          }
+        }
+      ]
+    }
+  ]
+}
