@@ -24,7 +24,7 @@ import { toPng } from "html-to-image";
 import defaultTemplate from "./defaultTemplate.json";
 
 type ModuleType = "title" | "subtitle" | "narration";
-type SceneBlockType = "sceneHeader" | "character" | "narration" | "afterword" | "tikitaka";
+type SceneBlockType = "sceneHeader" | "character" | "narration" | "afterword" | "tikitaka" | "reference";
 
 type TextStyle = {
   fontSize?: number;
@@ -64,7 +64,8 @@ type CharacterBlock = {
   id: string;
   type: "character";
   characterId: string;
-  role: string;
+  role?: string;
+  dataTag?: string;
   text: string;
   textStyle?: TextStyle;
 };
@@ -99,7 +100,20 @@ type TikitakaBlock = {
   textStyle?: TextStyle;
 };
 
-type SceneBlock = SceneHeaderBlock | CharacterBlock | NarrationBlock | AfterwordBlock | TikitakaBlock;
+type ReferenceItem = {
+  source: string;
+  detail?: string;
+};
+
+type ReferenceBlock = {
+  id: string;
+  type: "reference";
+  title?: string;
+  text: string;
+  items?: ReferenceItem[];
+};
+
+type SceneBlock = SceneHeaderBlock | CharacterBlock | NarrationBlock | AfterwordBlock | TikitakaBlock | ReferenceBlock;
 
 type SceneCardData = {
   id: string;
@@ -130,6 +144,14 @@ type TemplatesApiResponse = {
   error?: string;
 };
 
+type TheaterSaveFile = {
+  schemaVersion?: number;
+  data?: TheaterData;
+  presets?: CharacterPreset[];
+};
+
+const SCHEMA_VERSION = 1;
+
 const makeId = () => Math.random().toString(36).slice(2, 10);
 
 const MODULE_LABELS: Record<ModuleType, string> = {
@@ -143,7 +165,8 @@ const SCENE_BLOCK_LABELS: Record<SceneBlockType, string> = {
   character: "캐릭터",
   narration: "나레이션",
   afterword: "후기",
-  tikitaka: "티키타카"
+  tikitaka: "티키타카",
+  reference: "참고 데이터"
 };
 
 const DEFAULT_TEXT_STYLE: TextStyle = {
@@ -510,6 +533,7 @@ function updateStyleFontSize(style: TextStyle | undefined, action: FontSizeActio
 }
 
 function updateSceneBlockFontSizes(block: SceneBlock, action: FontSizeAction): SceneBlock {
+  if (block.type === "reference") return block;
   if (block.type === "sceneHeader") {
     return {
       ...block,
@@ -567,6 +591,7 @@ function renderModuleBlock(block: ModuleBlock) {
 }
 
 function renderSceneBlock(block: SceneBlock, presets: CharacterPreset[]) {
+  if (block.type === "reference") return "";
   if (block.type === "sceneHeader") {
     const image = block.imageData
       ? `<img src="${block.imageData}" alt="${escapeHtml(block.imageLabel || block.title)}" />`
@@ -580,12 +605,13 @@ function renderSceneBlock(block: SceneBlock, presets: CharacterPreset[]) {
   if (block.type === "character") {
     const characterId = normalizeCharacterId(block.characterId);
     const character = presets.find((preset) => preset.id === characterId) ?? presets[0];
+    const role = block.role ?? "";
     const avatar = character.imageData
       ? `<img class="avatar-img" style="--ring:${character.ring}" src="${character.imageData}" alt="${escapeHtml(character.name)}" />`
       : `<div class="avatar" style="--ring:${character.ring}">${escapeHtml(character.name.slice(0, 2))}</div>`;
     return `<div class="dialogue-block"><div class="dialogue-row"><div class="char-portrait">${avatar}<div class="char-name">${escapeHtml(
       character.name
-    )}</div></div><div class="dialogue-content"><div class="dialogue-label">${escapeHtml(block.role)}</div><div class="dialogue-text"${styleToCss(
+    )}</div></div><div class="dialogue-content"><div class="dialogue-label">${escapeHtml(role)}</div><div class="dialogue-text"${styleToCss(
       block.textStyle
     )}>${renderRichText(block.text)}</div></div></div></div>`;
   }
@@ -682,6 +708,7 @@ function createSceneBlock(type: SceneBlockType, defaultCharacterId: string): Sce
   if (type === "character") return { id: makeId(), type, characterId: defaultCharacterId, role: "대사", text: "", textStyle: { ...DEFAULT_TEXT_STYLE } };
   if (type === "narration") return { id: makeId(), type, title: "나레이션", text: "", textStyle: { ...DEFAULT_TEXT_STYLE } };
   if (type === "afterword") return { id: makeId(), type, title: "후기", text: "", textStyle: { ...DEFAULT_TEXT_STYLE, fontSize: 14, color: "#9a9080" } };
+  if (type === "reference") return { id: makeId(), type, title: "참고 데이터", text: "" };
   return { id: makeId(), type, title: "티키타카", textStyle: { ...DEFAULT_TEXT_STYLE, fontSize: 15, color: "#9a9080" }, lines: [{ id: makeId(), speaker: "화자", text: "" }] };
 }
 
@@ -884,6 +911,14 @@ async function requestTemplates(method: "GET" | "POST" | "DELETE", roomCode: str
 function getDefaultTemplateName(data: TheaterData) {
   const titleBlock = data.blocks.find((block): block is ModuleBlock => block.kind === "module" && block.moduleType === "title");
   return titleBlock?.content.replace(/\[[^\]]+\]|\[\/[^\]]+\]|\*\*|\/\//g, "").trim() || "새 템플릿";
+}
+
+function createSaveFile(data: TheaterData, presets: CharacterPreset[]): Required<TheaterSaveFile> {
+  return {
+    schemaVersion: SCHEMA_VERSION,
+    data: normalizeTheaterData(data),
+    presets: normalizeCharacterPresets(presets)
+  };
 }
 
 function makeCaptureFilename() {
@@ -1112,6 +1147,15 @@ const SceneBlockEditor = React.memo(function SceneBlockEditor({
     );
   }
 
+  if (block.type === "reference") {
+    return (
+      <div className="fieldGrid referenceEditor">
+        <input value={block.title} onChange={(event) => onChange({ ...block, title: event.target.value })} placeholder="참고 제목" />
+        <TextArea value={block.text} rows={5} onChange={(text) => onChange({ ...block, text })} />
+      </div>
+    );
+  }
+
   return (
     <div className="fieldGrid">
       <input value={block.title} onChange={(event) => onChange({ ...block, title: event.target.value })} placeholder="제목" />
@@ -1124,12 +1168,14 @@ const SceneEditor = React.memo(function SceneEditor({
   scene,
   presets,
   onChange,
-  onBlockChange
+  onBlockChange,
+  showReferences
 }: {
   scene: SceneCardData;
   presets: CharacterPreset[];
   onChange: (scene: SceneCardData) => void;
   onBlockChange: (sceneId: string, blockId: string, block: SceneBlock) => void;
+  showReferences: boolean;
 }) {
   const defaultCharacterId = presets[0]?.id ?? "etc";
 
@@ -1137,39 +1183,41 @@ const SceneEditor = React.memo(function SceneEditor({
     <section className="sceneEditor">
       <input className="sceneName" value={scene.name} onChange={(event) => onChange({ ...scene, name: event.target.value })} />
       <div className="addRow">
-        {(["sceneHeader", "character", "narration", "afterword", "tikitaka"] as SceneBlockType[]).map((type) => (
+        {(["sceneHeader", "character", "narration", "afterword", "tikitaka", "reference"] as SceneBlockType[]).map((type) => (
           <button key={type} type="button" onClick={() => onChange({ ...scene, blocks: [...scene.blocks, createSceneBlock(type, defaultCharacterId)] })}>
             <Plus size={14} />
             {SCENE_BLOCK_LABELS[type]}
           </button>
         ))}
       </div>
-      {scene.blocks.map((block, index) => (
-        <div className="blockEditor" key={block.id}>
-          <div className="blockHeader">
-            <strong>{SCENE_BLOCK_LABELS[block.type]}</strong>
-            <div>
-              <button type="button" className="iconButton" onClick={() => onChange({ ...scene, blocks: moveArrayItem(scene.blocks, index, -1) })}>
-                <ArrowUp size={15} />
-              </button>
-              <button type="button" className="iconButton" onClick={() => onChange({ ...scene, blocks: moveArrayItem(scene.blocks, index, 1) })}>
-                <ArrowDown size={15} />
-              </button>
-              <button type="button" className="iconButton danger" onClick={() => onChange({ ...scene, blocks: scene.blocks.filter((item) => item.id !== block.id) })}>
-                <Trash2 size={15} />
-              </button>
+      {scene.blocks.map((block, index) =>
+        block.type === "reference" && !showReferences ? null : (
+          <div className="blockEditor" key={block.id}>
+            <div className="blockHeader">
+              <strong>{SCENE_BLOCK_LABELS[block.type]}</strong>
+              <div>
+                <button type="button" className="iconButton" onClick={() => onChange({ ...scene, blocks: moveArrayItem(scene.blocks, index, -1) })}>
+                  <ArrowUp size={15} />
+                </button>
+                <button type="button" className="iconButton" onClick={() => onChange({ ...scene, blocks: moveArrayItem(scene.blocks, index, 1) })}>
+                  <ArrowDown size={15} />
+                </button>
+                <button type="button" className="iconButton danger" onClick={() => onChange({ ...scene, blocks: scene.blocks.filter((item) => item.id !== block.id) })}>
+                  <Trash2 size={15} />
+                </button>
+              </div>
             </div>
+            <SceneBlockEditor
+              block={block}
+              presets={presets}
+              onChange={(nextBlock) => onBlockChange(scene.id, block.id, nextBlock)}
+            />
           </div>
-          <SceneBlockEditor
-            block={block}
-            presets={presets}
-            onChange={(nextBlock) => onBlockChange(scene.id, block.id, nextBlock)}
-          />
-        </div>
-      ))}
+        )
+      )}
     </section>
   );
-}, (prev, next) => prev.scene === next.scene && prev.presets === next.presets);
+}, (prev, next) => prev.scene === next.scene && prev.presets === next.presets && prev.showReferences === next.showReferences);
 
 export default function TheaterToolBuilder() {
   const [data, setData] = useState<TheaterData>(() => normalizeTheaterData(defaultTemplate as TheaterData));
@@ -1185,6 +1233,7 @@ export default function TheaterToolBuilder() {
   const [editorPercent, setEditorPercent] = useState(52);
   const [isResizing, setIsResizing] = useState(false);
   const [theme, setTheme] = useState<ThemeMode>("dark");
+  const [showReferences, setShowReferences] = useState(true);
   const importRef = useRef<HTMLInputElement>(null);
   const splitRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLIFrameElement>(null);
@@ -1440,8 +1489,8 @@ export default function TheaterToolBuilder() {
       id: makeId(),
       name: name.trim(),
       createdAt: new Date().toISOString(),
-      data,
-      presets
+      data: normalizeTheaterData(data),
+      presets: normalizeCharacterPresets(presets)
     };
     setTemplatesLoading(true);
     setTemplatesMessage("템플릿을 저장하는 중입니다.");
@@ -1482,7 +1531,7 @@ export default function TheaterToolBuilder() {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
-      const parsed = JSON.parse(String(reader.result || "{}")) as { data?: TheaterData; presets?: CharacterPreset[] };
+      const parsed = JSON.parse(String(reader.result || "{}")) as TheaterSaveFile;
       if (parsed.data?.blocks) commitData(normalizeTheaterData(parsed.data));
       if (parsed.presets) setPresets(normalizeCharacterPresets(parsed.presets));
     };
@@ -1533,12 +1582,16 @@ export default function TheaterToolBuilder() {
             <Palette size={16} />
             {theme === "dark" ? "화이트 모드" : "다크 모드"}
           </button>
+          <button type="button" onClick={() => setShowReferences((current) => !current)}>
+            <Eye size={16} />
+            {showReferences ? "참고 데이터 숨기기" : "참고 데이터 보이기"}
+          </button>
           <button type="button" onClick={() => importRef.current?.click()}>
             <Upload size={16} />
             JSON 가져오기
           </button>
           <input ref={importRef} className="hiddenInput" type="file" accept="application/json" onChange={importJson} />
-          <button type="button" onClick={() => downloadFile("theater-data.json", JSON.stringify({ data, presets }, null, 2), "application/json")}>
+          <button type="button" onClick={() => downloadFile("theater-data.json", JSON.stringify(createSaveFile(data, presets), null, 2), "application/json")}>
             <FileJson size={16} />
             JSON 저장
           </button>
@@ -1686,7 +1739,13 @@ export default function TheaterToolBuilder() {
                   </div>
                 </div>
                 {isSceneCard(block) ? (
-                  <SceneEditor scene={block} presets={presets} onChange={(scene) => updateBlock(block.id, scene)} onBlockChange={updateSceneBlock} />
+                  <SceneEditor
+                    scene={block}
+                    presets={presets}
+                    onChange={(scene) => updateBlock(block.id, scene)}
+                    onBlockChange={updateSceneBlock}
+                    showReferences={showReferences}
+                  />
                 ) : (
                   <div className="fieldGrid">
                     <RichTextArea value={block.content} rows={block.moduleType === "narration" ? 5 : 2} onChange={(content) => updateBlock(block.id, { ...block, content })} />
@@ -1804,10 +1863,12 @@ textarea { resize: vertical; line-height: 1.6; }
 .sceneName { font-weight: 700; }
 .addRow { display: flex; flex-wrap: wrap; gap: 8px; }
 .blockEditor { background: var(--app-surface-2); }
+.blockEditor:has(.referenceEditor) { border-style: dashed; background: color-mix(in srgb, var(--app-surface-2) 78%, var(--app-accent) 10%); }
 .blockHeader > div { display: flex; gap: 6px; }
 .iconButton { width: 34px; min-height: 34px; padding: 0; }
 .danger:hover { border-color: #e37a7a; color: #ffb4b4; }
 .fieldGrid { display: grid; gap: 9px; min-width: 0; }
+.referenceEditor textarea { color: var(--app-dim); font-size: 13px; background: var(--app-surface-3); }
 .lineEditor { display: grid; grid-template-columns: 110px minmax(0, 1fr) 34px; gap: 7px; }
 .lineEditorRich { display: grid; gap: 7px; padding: 8px; border: 1px solid var(--app-border); border-radius: 8px; background: var(--app-surface-3); }
 .lineMeta { display: grid; grid-template-columns: minmax(0, 1fr) 34px; gap: 7px; }
