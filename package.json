@@ -1,12 +1,20 @@
 {
+  "name": "theater_tool_builder",
+  "private": true,
   "scripts": {
-    "dev": "vite --host 0.0.0.0",
+    "dev": "npm run dev:netlify",
+    "dev:vite": "vite --host 0.0.0.0",
+    "dev:netlify": "npx netlify dev --offline --no-open",
+    "dev:netlify:auth": "npx netlify dev --no-open",
     "build": "tsc -b && vite build",
-    "preview": "vite preview --host 0.0.0.0"
+    "preview": "vite preview --host 0.0.0.0",
+    "deploy:preview": "npx netlify deploy --build",
+    "deploy:prod": "npx netlify deploy --build --prod"
   },
   "dependencies": {
     "@netlify/blobs": "^10.7.4",
     "@vitejs/plugin-react": "latest",
+    "html-to-image": "^1.11.13",
     "lucide-react": "latest",
     "react": "latest",
     "react-dom": "latest",

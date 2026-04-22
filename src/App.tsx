@@ -3,6 +3,7 @@ import {
   ArrowDown,
   ArrowUp,
   Bold,
+  Camera,
   ChevronDown,
   ChevronUp,
   Download,
@@ -10,13 +11,16 @@ import {
   FileJson,
   ImagePlus,
   Italic,
+  Languages,
   Palette,
   Plus,
   Redo2,
+  RotateCcw,
   Trash2,
   Undo2,
   Upload
 } from "lucide-react";
+import { toPng } from "html-to-image";
 import defaultTemplate from "./defaultTemplate.json";
 
 type ModuleType = "title" | "subtitle" | "narration";
@@ -108,6 +112,7 @@ type PageBlock = ModuleBlock | SceneCardData;
 
 type TheaterData = {
   blocks: PageBlock[];
+  labelFontOffset?: number;
 };
 
 type ThemeMode = "dark" | "light";
@@ -142,31 +147,85 @@ const SCENE_BLOCK_LABELS: Record<SceneBlockType, string> = {
 };
 
 const DEFAULT_TEXT_STYLE: TextStyle = {
-  fontSize: 14,
+  fontSize: 16,
   bold: false,
-  italic: false,
-  color: "#e8e0d0"
+  italic: false
 };
+
+const MIN_FONT_SIZE = 9;
+const MAX_FONT_SIZE = 48;
+
+const MODULE_DEFAULT_FONT_SIZES: Record<ModuleType, number> = {
+  title: 23,
+  subtitle: DEFAULT_TEXT_STYLE.fontSize ?? 16,
+  narration: DEFAULT_TEXT_STYLE.fontSize ?? 16
+};
+
+const SCENE_DEFAULT_FONT_SIZES = {
+  sceneTitle: 15,
+  sceneDesc: 15,
+  character: DEFAULT_TEXT_STYLE.fontSize ?? 16,
+  narration: DEFAULT_TEXT_STYLE.fontSize ?? 16,
+  afterword: 14,
+  tikitaka: 15
+};
+
+const LABEL_FONT_SIZES = {
+  postTag: 13,
+  sceneNumber: 13,
+  sceneImageLabel: 14,
+  avatarFallback: 15,
+  characterName: 12,
+  blockLabel: 12,
+  sideTitle: 12
+};
+
+const MIN_LABEL_FONT_OFFSET = MIN_FONT_SIZE - Math.min(...Object.values(LABEL_FONT_SIZES));
+const MAX_LABEL_FONT_OFFSET = MAX_FONT_SIZE - Math.max(...Object.values(LABEL_FONT_SIZES));
+
+type FontSizeAction = { mode: "reset" } | { mode: "shift"; delta: number };
+
+function clampFontSize(value: number, fallback = DEFAULT_TEXT_STYLE.fontSize ?? 16) {
+  const numeric = Number.isFinite(value) ? value : fallback;
+  return Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, Math.round(numeric)));
+}
+
+function clampLabelFontOffset(value: number) {
+  const numeric = Number.isFinite(value) ? Math.round(value) : 0;
+  return Math.min(MAX_LABEL_FONT_OFFSET, Math.max(MIN_LABEL_FONT_OFFSET, numeric));
+}
 
 const CHARACTER_PRESETS: CharacterPreset[] = [
   { id: "emma", name: "에마", imageData: "/characters/emma.png", ring: "#e7a8ba" },
-  { id: "nero", name: "히로", imageData: "/characters/hiro.png", ring: "#b51f47" },
-  { id: "dian", name: "안안", imageData: "/characters/anan.png", ring: "#6f81c8" },
+  { id: "hiro", name: "히로", imageData: "/characters/hiro.png", ring: "#b51f47" },
+  { id: "anan", name: "안안", imageData: "/characters/anan.png", ring: "#6f81c8" },
   { id: "noa", name: "노아", imageData: "/characters/noa.png", ring: "#9bb7d4" },
   { id: "leia", name: "레이아", imageData: "/characters/leia.png", ring: "#d4b27c" },
-  { id: "miriam", name: "미리아", imageData: "/characters/miria.png", ring: "#d7bf8b" },
-  { id: "margo", name: "마고", imageData: "/characters/mago.png", ring: "#9a63d8" },
-  { id: "pinocchio", name: "나노카", imageData: "/characters/nanoka.png", ring: "#8f939d" },
-  { id: "aria", name: "아리사", imageData: "/characters/arisa.png", ring: "#b91c1c" },
-  { id: "yuri", name: "셰리", imageData: "/characters/sherry.png", ring: "#7c9ef0" },
-  { id: "sena", name: "한나", imageData: "/characters/hanna.png", ring: "#a8c65a" },
+  { id: "miria", name: "미리아", imageData: "/characters/miria.png", ring: "#d7bf8b" },
+  { id: "mago", name: "마고", imageData: "/characters/mago.png", ring: "#9a63d8" },
+  { id: "nanoka", name: "나노카", imageData: "/characters/nanoka.png", ring: "#8f939d" },
+  { id: "arisa", name: "아리사", imageData: "/characters/arisa.png", ring: "#b91c1c" },
+  { id: "sherry", name: "셰리", imageData: "/characters/sherry.png", ring: "#7c9ef0" },
+  { id: "hanna", name: "한나", imageData: "/characters/hanna.png", ring: "#a8c65a" },
   { id: "coco", name: "코코", imageData: "/characters/coco.png", ring: "#ef7d36" },
   { id: "meruru", name: "메루루", imageData: "/characters/meruru.png", ring: "#b6b6be" },
-  { id: "unknown", name: "교도소장", imageData: "/characters/warden.png", ring: "#666666" },
+  { id: "warden", name: "교도소장", imageData: "/characters/warden.png", ring: "#666666" },
   { id: "guard", name: "간수", imageData: "/characters/guard.png", ring: "#444444" },
   { id: "yuki", name: "유키", imageData: "", ring: "#6b7280" },
   { id: "etc", name: "기타", imageData: "", ring: "#bbbbbb" }
 ];
+
+const CHARACTER_ID_ALIASES: Record<string, string> = {
+  nero: "hiro",
+  dian: "anan",
+  miriam: "miria",
+  margo: "mago",
+  pinocchio: "nanoka",
+  aria: "arisa",
+  yuri: "sherry",
+  sena: "hanna",
+  unknown: "warden"
+};
 
 const sampleData: TheaterData = {
   blocks: [
@@ -210,7 +269,7 @@ const sampleData: TheaterData = {
         {
           id: makeId(),
           type: "character",
-          characterId: "nero",
+          characterId: "hiro",
           role: "행동/결정",
           text: '//"나는 너를 용서할 수 없고, 그 사실은 변하지 않아."// 에마가 손을 뻗었지만 뿌리쳤다. 복도를 향해 혼자 걸어나갔다.',
           textStyle: { fontSize: 14, bold: false, italic: false, color: "#e8e0d0" }
@@ -218,7 +277,7 @@ const sampleData: TheaterData = {
         {
           id: makeId(),
           type: "character",
-          characterId: "margo",
+          characterId: "mago",
           role: "질문",
           text: "루프 기억이 있는 상태에서 제일 먼저 한 게 이거야. 모두가 어떻게 죽는지 다 알고 있는데, 첫 번째 생각이 [color=#d08080]에마를 밀어내는 것[/color]이었다고?",
           textStyle: { fontSize: 14, bold: false, italic: false, color: "#e8e0d0" }
@@ -226,7 +285,7 @@ const sampleData: TheaterData = {
         {
           id: makeId(),
           type: "character",
-          characterId: "pinocchio",
+          characterId: "nanoka",
           role: "직접 트리거",
           text: "룸메이트로 재회한 것 자체. 그리고 에마의 얼굴을 보는 순간 유키 자살 기억이 즉각 재점화된 것.",
           textStyle: { fontSize: 14, bold: false, italic: false, color: "#b0a080" }
@@ -268,8 +327,8 @@ const baseCss = `
   --surface-2: #151311;
   --border: #2e2a24;
   --accent: #c8a96e;
-  --text: #e8e0d0;
-  --text-dim: #9a9080;
+  --text: #d8c8aa;
+  --text-dim: #b4a891;
   --text-faint: #5a5448;
   --scroll-track: #1b1916;
   --scroll-thumb: rgb(200, 169, 110);
@@ -280,8 +339,8 @@ body.theme-light {
   --surface-2: #ede5d8;
   --border: #d9cbb8;
   --accent: #8f6f32;
-  --text: #24211d;
-  --text-dim: #675d50;
+  --text: #2f2a24;
+  --text-dim: #655b4d;
   --text-faint: #968775;
   --scroll-track: #e8dece;
   --scroll-thumb: rgb(200, 169, 110);
@@ -298,40 +357,65 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: 'Pretendard','Noto Sans KR',sans-serif;
-  font-size: 15px;
+  font-size: 17px;
   line-height: 1.8;
   max-width: 780px;
   margin: 0 auto;
   padding: 40px 20px 80px;
 }
 .post-header { border-bottom: 1px solid var(--border); padding-bottom: 28px; margin-bottom: 40px; }
-.post-tag { font-size: 11px; letter-spacing: 2px; color: var(--accent); text-transform: uppercase; margin-bottom: 10px; }
+.post-tag { font-size: var(--font-post-tag); letter-spacing: 2px; color: var(--accent); text-transform: uppercase; margin-bottom: 10px; }
 .module-title { margin: 0 0 20px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
-.post-title { font-family: 'Noto Serif KR', serif; font-size: 22px; font-weight: 700; line-height: 1.4; margin-bottom: 6px; }
+.post-title { font-family: 'Noto Serif KR', serif; font-size: 24px; font-weight: 700; line-height: 1.4; margin-bottom: 6px; }
 .module-subtitle { margin: 0 0 20px; }
-.post-subtitle { font-size: 13px; color: var(--text-dim); }
-.narrative { color: var(--text-dim); font-size: 14px; line-height: 1.9; margin: 24px 0; padding-left: 16px; border-left: 2px solid var(--border); white-space: pre-wrap; }
+.post-subtitle { font-size: 15px; color: var(--text-dim); }
+.narrative { color: var(--text-dim); font-size: 16px; line-height: 1.9; margin: 24px 0; padding-left: 16px; border-left: 2px solid var(--border); white-space: pre-wrap; }
 .scene { margin: 40px 0; border: 1px solid var(--border); background: var(--surface); }
 .scene-header { background: var(--surface-2); padding: 10px 16px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--border); }
-.scene-num { font-size: 11px; letter-spacing: 1px; color: var(--accent); text-transform: uppercase; }
-.scene-title { font-size: 13px; font-weight: 500; color: var(--text); }
-.scene-img-placeholder { width: 100%; min-height: 180px; background: linear-gradient(135deg, var(--surface) 0%, var(--surface-2) 100%); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 6px; color: var(--text-faint); font-size: 12px; letter-spacing: 1px; padding: 20px; text-align: center; overflow: hidden; }
+.scene-num { font-size: var(--font-scene-number); letter-spacing: 1px; color: var(--accent); text-transform: uppercase; }
+.scene-title { font-size: 15px; font-weight: 500; color: var(--text); }
+.scene-img-placeholder { width: 100%; min-height: 180px; background: linear-gradient(135deg, var(--surface) 0%, var(--surface-2) 100%); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 6px; color: var(--text-faint); font-size: var(--font-scene-image-label); letter-spacing: 1px; padding: 20px; text-align: center; overflow: hidden; }
 .scene-img-placeholder img { max-width: 100%; max-height: 280px; object-fit: contain; display: block; }
-.scene-desc { padding: 12px 16px; font-size: 13px; color: var(--text-dim); border-bottom: 1px solid var(--border); line-height: 1.7; white-space: pre-wrap; }
+.scene-desc { padding: 12px 16px; font-size: 15px; color: var(--text-dim); border-bottom: 1px solid var(--border); line-height: 1.7; white-space: pre-wrap; }
 .dialogue-block { padding: 8px 16px; display: flex; flex-direction: column; gap: 2px; }
-.dialogue-row, .narration-row { display: flex; gap: 12px; align-items: flex-start; padding: 16px; border-bottom: 1px solid rgba(255,255,255,0.03); }
-.char-portrait { flex-shrink: 0; width: 58px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
-.avatar, .avatar-img { width: 46px; height: 46px; border-radius: 9999px; border: 3px solid var(--ring, var(--border)); background: #26231e; object-fit: cover; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; text-align: center; padding: 4px; }
-.char-name { font-size: 9px; color: var(--text-faint); text-align: center; line-height: 1.3; }
+.dialogue-row, .narration-row { display: flex; gap: 15px; align-items: flex-start; padding: 16px; border-bottom: 1px solid rgba(255,255,255,0.03); }
+.char-portrait { flex-shrink: 0; width: 86px; display: flex; flex-direction: column; align-items: center; gap: 5px; }
+.avatar, .avatar-img { width: 74px; height: 74px; border-radius: 9999px; border: 3px solid var(--ring, var(--border)); background: #26231e; object-fit: cover; display: flex; align-items: center; justify-content: center; font-size: var(--font-avatar-fallback); font-weight: 700; text-align: center; padding: 4px; }
+.char-name { font-size: var(--font-character-name); color: var(--text-faint); text-align: center; line-height: 1.3; }
 .dialogue-content, .narration-content { flex: 1; padding-top: 4px; }
-.dialogue-label, .narration-label { font-size: 10px; letter-spacing: 1px; color: var(--text-faint); text-transform: uppercase; margin-bottom: 3px; }
-.dialogue-text, .narration-text { font-size: 14px; color: var(--text); line-height: 1.7; white-space: pre-wrap; }
-.afterword { margin: 12px 16px; padding: 10px 14px; background: rgba(200,169,110,0.05); border-left: 3px solid var(--accent); font-size: 12px; color: var(--text-dim); line-height: 1.7; white-space: pre-wrap; }
-.afterword-title, .tikitaka-title { font-size: 10px; color: var(--accent); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 4px; }
-.tikitaka { margin: 16px; padding: 12px 16px; background: rgba(255,255,255,0.02); border: 1px solid var(--border); font-size: 13px; color: var(--text-dim); line-height: 1.8; white-space: pre-wrap; }
+.dialogue-label, .narration-label { font-size: var(--font-block-label); letter-spacing: 1px; color: var(--text-faint); text-transform: uppercase; margin-bottom: 3px; }
+.dialogue-text, .narration-text { font-size: 16px; color: var(--text); line-height: 1.7; white-space: pre-wrap; }
+.dialogue-text:empty::before, .narration-text:empty::before { content: "\\00a0"; }
+.afterword { margin: 12px 16px; padding: 10px 14px; background: rgba(200,169,110,0.05); border-left: 3px solid var(--accent); font-size: 14px; color: var(--text-dim); line-height: 1.7; white-space: pre-wrap; }
+.afterword-title, .tikitaka-title { font-size: var(--font-side-title); color: var(--accent); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 4px; }
+.tikitaka { margin: 16px; padding: 12px 16px; background: rgba(255,255,255,0.02); border: 1px solid var(--border); font-size: 15px; color: var(--text-dim); line-height: 1.8; white-space: pre-wrap; }
 em { color: var(--accent2); font-style: italic; }
 strong { color: var(--text); font-weight: 700; }
+ruby { ruby-align: center; ruby-position: over; }
+rt { color: var(--accent); font-size: 0.58em; line-height: 1; font-weight: 600; letter-spacing: 0; }
+rp { color: var(--text-faint); font-size: 0.72em; }
 `;
+
+function offsetFontSize(baseSize: number, offset: number) {
+  return `${clampFontSize(baseSize + clampLabelFontOffset(offset))}px`;
+}
+
+function renderLabelFontCss(data: TheaterData) {
+  const offset = clampLabelFontOffset(data.labelFontOffset ?? 0);
+  return `:root {
+  --font-post-tag: ${offsetFontSize(LABEL_FONT_SIZES.postTag, offset)};
+  --font-scene-number: ${offsetFontSize(LABEL_FONT_SIZES.sceneNumber, offset)};
+  --font-scene-image-label: ${offsetFontSize(LABEL_FONT_SIZES.sceneImageLabel, offset)};
+  --font-avatar-fallback: ${offsetFontSize(LABEL_FONT_SIZES.avatarFallback, offset)};
+  --font-character-name: ${offsetFontSize(LABEL_FONT_SIZES.characterName, offset)};
+  --font-block-label: ${offsetFontSize(LABEL_FONT_SIZES.blockLabel, offset)};
+  --font-side-title: ${offsetFontSize(LABEL_FONT_SIZES.sideTitle, offset)};
+}`;
+}
+
+function renderCss(data: TheaterData) {
+  return `${baseCss}\n${renderLabelFontCss(data)}`;
+}
 
 function escapeHtml(str = "") {
   return str.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char] ?? char);
@@ -339,6 +423,37 @@ function escapeHtml(str = "") {
 
 function isSceneCard(block: PageBlock): block is SceneCardData {
   return block.kind === "scene";
+}
+
+function normalizeCharacterId(id: string) {
+  return CHARACTER_ID_ALIASES[id] ?? id;
+}
+
+function normalizeCharacterPresets(presets: CharacterPreset[]) {
+  const seen = new Set<string>();
+  return presets
+    .map((preset) => ({ ...preset, id: normalizeCharacterId(preset.id) }))
+    .filter((preset) => {
+      if (seen.has(preset.id)) return false;
+      seen.add(preset.id);
+      return true;
+    });
+}
+
+function normalizeTheaterData(data: TheaterData): TheaterData {
+  return {
+    ...data,
+    labelFontOffset: clampLabelFontOffset(data.labelFontOffset ?? 0),
+    blocks: data.blocks.map((block) => {
+      if (!isSceneCard(block)) return block;
+      return {
+        ...block,
+        blocks: block.blocks.map((sceneBlock) =>
+          sceneBlock.type === "character" ? { ...sceneBlock, characterId: normalizeCharacterId(sceneBlock.characterId) } : sceneBlock
+        )
+      };
+    })
+  };
 }
 
 function moveArrayItem<T>(items: T[], index: number, direction: -1 | 1) {
@@ -355,24 +470,93 @@ function styleToCss(style?: TextStyle) {
   if (style.fontSize) parts.push(`font-size:${style.fontSize}px`);
   if (style.bold !== undefined) parts.push(`font-weight:${style.bold ? 700 : 400}`);
   if (style.italic !== undefined) parts.push(`font-style:${style.italic ? "italic" : "normal"}`);
-  if (style.color) parts.push(`color:${style.color}`);
+  if (style.color && !["#e8e0d0", "#d8c8aa"].includes(style.color.toLowerCase())) parts.push(`color:${style.color}`);
   return parts.length ? ` style="${parts.join(";")}"` : "";
 }
 
 function renderRichText(str = "") {
   let html = escapeHtml(str);
   html = html.replace(/\[size=([0-9]{1,2})\]([\s\S]*?)\[\/size\]/g, (_match, size, text) => {
-    const safeSize = Math.min(48, Math.max(9, Number(size)));
+    const safeSize = clampFontSize(Number(size));
     return `<span style="font-size:${safeSize}px">${text}</span>`;
   });
   html = html.replace(/\[color=(#[0-9a-fA-F]{3,8})\]([\s\S]*?)\[\/color\]/g, '<span style="color:$1">$2</span>');
   html = html.replace(/\*\*([\s\S]*?)\*\*/g, "<strong>$1</strong>");
   html = html.replace(/\/\/([\s\S]*?)\/\//g, "<em>$1</em>");
+  html = html.replace(/\[ruby=([^\]]{1,40})\]([\s\S]*?)\[\/ruby\]/g, "<ruby>$2<rp>(</rp><rt>$1</rt><rp>)</rp></ruby>");
   return html.replace(/\n/g, "<br />");
 }
 
 function normalizeStyle(style?: TextStyle): Required<TextStyle> {
   return { ...DEFAULT_TEXT_STYLE, ...style } as Required<TextStyle>;
+}
+
+function getNextFontSize(currentSize: number, action: FontSizeAction, defaultSize: number) {
+  return action.mode === "reset" ? defaultSize : currentSize + action.delta;
+}
+
+function updateTextSizeTags(text: string, action: FontSizeAction, defaultSize: number) {
+  return text.replace(/\[size=([0-9]{1,2})\]/g, (_match, size) => {
+    const currentSize = clampFontSize(Number(size));
+    const nextSize = getNextFontSize(currentSize, action, defaultSize);
+    return `[size=${clampFontSize(nextSize)}]`;
+  });
+}
+
+function updateStyleFontSize(style: TextStyle | undefined, action: FontSizeAction, defaultSize: number): TextStyle {
+  const currentSize = style?.fontSize ?? defaultSize;
+  const nextSize = getNextFontSize(currentSize, action, defaultSize);
+  return { ...style, fontSize: clampFontSize(nextSize) };
+}
+
+function updateSceneBlockFontSizes(block: SceneBlock, action: FontSizeAction): SceneBlock {
+  if (block.type === "sceneHeader") {
+    return {
+      ...block,
+      title: updateTextSizeTags(block.title, action, SCENE_DEFAULT_FONT_SIZES.sceneTitle),
+      desc: updateTextSizeTags(block.desc, action, SCENE_DEFAULT_FONT_SIZES.sceneDesc),
+      titleStyle: updateStyleFontSize(block.titleStyle, action, SCENE_DEFAULT_FONT_SIZES.sceneTitle),
+      descStyle: updateStyleFontSize(block.descStyle, action, SCENE_DEFAULT_FONT_SIZES.sceneDesc)
+    };
+  }
+  if (block.type === "character") {
+    return {
+      ...block,
+      text: updateTextSizeTags(block.text, action, SCENE_DEFAULT_FONT_SIZES.character),
+      textStyle: updateStyleFontSize(block.textStyle, action, SCENE_DEFAULT_FONT_SIZES.character)
+    };
+  }
+  if (block.type === "narration") {
+    return {
+      ...block,
+      text: updateTextSizeTags(block.text, action, SCENE_DEFAULT_FONT_SIZES.narration),
+      textStyle: updateStyleFontSize(block.textStyle, action, SCENE_DEFAULT_FONT_SIZES.narration)
+    };
+  }
+  if (block.type === "afterword") {
+    return {
+      ...block,
+      text: updateTextSizeTags(block.text, action, SCENE_DEFAULT_FONT_SIZES.afterword),
+      textStyle: updateStyleFontSize(block.textStyle, action, SCENE_DEFAULT_FONT_SIZES.afterword)
+    };
+  }
+  return {
+    ...block,
+    textStyle: updateStyleFontSize(block.textStyle, action, SCENE_DEFAULT_FONT_SIZES.tikitaka),
+    lines: block.lines.map((line) => ({ ...line, text: updateTextSizeTags(line.text, action, SCENE_DEFAULT_FONT_SIZES.tikitaka) }))
+  };
+}
+
+function updatePageBlockFontSizes(block: PageBlock, action: FontSizeAction): PageBlock {
+  if (!isSceneCard(block)) {
+    const defaultSize = MODULE_DEFAULT_FONT_SIZES[block.moduleType];
+    return {
+      ...block,
+      content: updateTextSizeTags(block.content, action, defaultSize),
+      textStyle: updateStyleFontSize(block.textStyle, action, defaultSize)
+    };
+  }
+  return { ...block, blocks: block.blocks.map((sceneBlock) => updateSceneBlockFontSizes(sceneBlock, action)) };
 }
 
 function renderModuleBlock(block: ModuleBlock) {
@@ -394,7 +578,8 @@ function renderSceneBlock(block: SceneBlock, presets: CharacterPreset[]) {
     )}>${renderRichText(block.desc)}</div>`;
   }
   if (block.type === "character") {
-    const character = presets.find((preset) => preset.id === block.characterId) ?? presets[0];
+    const characterId = normalizeCharacterId(block.characterId);
+    const character = presets.find((preset) => preset.id === characterId) ?? presets[0];
     const avatar = character.imageData
       ? `<img class="avatar-img" style="--ring:${character.ring}" src="${character.imageData}" alt="${escapeHtml(character.name)}" />`
       : `<div class="avatar" style="--ring:${character.ring}">${escapeHtml(character.name.slice(0, 2))}</div>`;
@@ -405,9 +590,10 @@ function renderSceneBlock(block: SceneBlock, presets: CharacterPreset[]) {
     )}>${renderRichText(block.text)}</div></div></div></div>`;
   }
   if (block.type === "narration") {
-    return `<div class="narration-row"><div class="narration-content"><div class="narration-label">${escapeHtml(
-      block.title
-    )}</div><div class="narration-text"${styleToCss(block.textStyle)}>${renderRichText(block.text)}</div></div></div>`;
+    const label = block.title.trim() ? `<div class="narration-label">${escapeHtml(block.title)}</div>` : "";
+    return `<div class="narration-row"><div class="narration-content">${label}<div class="narration-text"${styleToCss(
+      block.textStyle
+    )}>${renderRichText(block.text)}</div></div></div>`;
   }
   if (block.type === "afterword") {
     return `<div class="afterword"${styleToCss(block.textStyle)}><div class="afterword-title">${escapeHtml(block.title)}</div>${renderRichText(block.text)}</div>`;
@@ -417,7 +603,7 @@ function renderSceneBlock(block: SceneBlock, presets: CharacterPreset[]) {
     .join("<br />")}</div>`;
 }
 
-function renderHtml(data: TheaterData, presets: CharacterPreset[], theme: ThemeMode = "dark") {
+function renderPreviewBody(data: TheaterData, presets: CharacterPreset[]) {
   const blocks = [...data.blocks];
   let header = "";
   if (blocks[0]?.kind === "module" && blocks[0].moduleType === "title" && blocks[1]?.kind === "module" && blocks[1].moduleType === "subtitle") {
@@ -434,7 +620,20 @@ function renderHtml(data: TheaterData, presets: CharacterPreset[], theme: ThemeM
       return `<section class="scene">${block.blocks.map((sceneBlock) => renderSceneBlock(sceneBlock, presets)).join("")}</section>`;
     })
     .join("\n");
-  return `<!doctype html><html lang="ko"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>Theater Export</title><style>${baseCss}</style></head><body class="theme-${theme}">${header}${body}</body></html>`;
+  return `${header}${body}`;
+}
+
+function renderPreviewShell(css: string, theme: ThemeMode = "dark") {
+  return `<!doctype html><html lang="ko"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>Theater Export</title><style id="preview-css">${css}</style></head><body class="theme-${theme}"></body></html>`;
+}
+
+function renderHtml(data: TheaterData, presets: CharacterPreset[], theme: ThemeMode = "dark") {
+  return `<!doctype html><html lang="ko"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>Theater Export</title><style>${renderCss(
+    data
+  )}</style></head><body class="theme-${theme}">${renderPreviewBody(
+    data,
+    presets
+  )}</body></html>`;
 }
 
 function createModuleBlock(moduleType: ModuleType): ModuleBlock {
@@ -443,7 +642,7 @@ function createModuleBlock(moduleType: ModuleType): ModuleBlock {
     kind: "module",
     moduleType,
     content: moduleType === "title" ? "새 제목" : moduleType === "subtitle" ? "새 부제" : "새 나레이션",
-    textStyle: moduleType === "title" ? { ...DEFAULT_TEXT_STYLE, fontSize: 22, bold: true } : { ...DEFAULT_TEXT_STYLE }
+    textStyle: moduleType === "title" ? { ...DEFAULT_TEXT_STYLE, fontSize: 23, bold: true } : { ...DEFAULT_TEXT_STYLE }
   };
 }
 
@@ -460,8 +659,8 @@ function createSceneCard(): SceneCardData {
         title: "새 장면",
         desc: "",
         imageLabel: "이미지",
-        titleStyle: { ...DEFAULT_TEXT_STYLE, fontSize: 13, bold: true },
-        descStyle: { ...DEFAULT_TEXT_STYLE, fontSize: 13, color: "#9a9080" }
+        titleStyle: { ...DEFAULT_TEXT_STYLE, fontSize: 15, bold: true },
+        descStyle: { ...DEFAULT_TEXT_STYLE, fontSize: 15, color: "#9a9080" }
       }
     ]
   };
@@ -476,14 +675,14 @@ function createSceneBlock(type: SceneBlockType, defaultCharacterId: string): Sce
       title: "장면 제목",
       desc: "",
       imageLabel: "이미지",
-      titleStyle: { ...DEFAULT_TEXT_STYLE, fontSize: 13, bold: true },
-      descStyle: { ...DEFAULT_TEXT_STYLE, fontSize: 13, color: "#9a9080" }
+      titleStyle: { ...DEFAULT_TEXT_STYLE, fontSize: 15, bold: true },
+      descStyle: { ...DEFAULT_TEXT_STYLE, fontSize: 15, color: "#9a9080" }
     };
   }
   if (type === "character") return { id: makeId(), type, characterId: defaultCharacterId, role: "대사", text: "", textStyle: { ...DEFAULT_TEXT_STYLE } };
   if (type === "narration") return { id: makeId(), type, title: "나레이션", text: "", textStyle: { ...DEFAULT_TEXT_STYLE } };
-  if (type === "afterword") return { id: makeId(), type, title: "후기", text: "", textStyle: { ...DEFAULT_TEXT_STYLE, fontSize: 12, color: "#9a9080" } };
-  return { id: makeId(), type, title: "티키타카", textStyle: { ...DEFAULT_TEXT_STYLE, fontSize: 13, color: "#9a9080" }, lines: [{ id: makeId(), speaker: "화자", text: "" }] };
+  if (type === "afterword") return { id: makeId(), type, title: "후기", text: "", textStyle: { ...DEFAULT_TEXT_STYLE, fontSize: 14, color: "#9a9080" } };
+  return { id: makeId(), type, title: "티키타카", textStyle: { ...DEFAULT_TEXT_STYLE, fontSize: 15, color: "#9a9080" }, lines: [{ id: makeId(), speaker: "화자", text: "" }] };
 }
 
 function readImageFile(file: File, callback: (dataUrl: string) => void) {
@@ -500,6 +699,97 @@ function downloadFile(filename: string, content: string, type: string) {
   link.download = filename;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+function downloadDataUrl(filename: string, dataUrl: string) {
+  const link = document.createElement("a");
+  link.href = dataUrl;
+  link.download = filename;
+  link.click();
+}
+
+async function waitForImages(root: ParentNode) {
+  const images = Array.from(root.querySelectorAll("img"));
+  await Promise.all(
+    images.map(async (image) => {
+      if (image.complete && image.naturalWidth > 0) return;
+      if (typeof image.decode === "function") {
+        try {
+          await image.decode();
+          return;
+        } catch {
+          // Fall back to load/error listeners below.
+        }
+      }
+      await new Promise<void>((resolve) => {
+        image.addEventListener("load", () => resolve(), { once: true });
+        image.addEventListener("error", () => resolve(), { once: true });
+      });
+    })
+  );
+}
+
+const CAPTURE_WIDTH = 780;
+
+async function createCaptureFrame(html: string) {
+  const frame = document.createElement("iframe");
+  frame.setAttribute("aria-hidden", "true");
+  frame.tabIndex = -1;
+  frame.style.position = "fixed";
+  frame.style.left = "-10000px";
+  frame.style.top = "0";
+  frame.style.width = `${CAPTURE_WIDTH}px`;
+  frame.style.height = "1px";
+  frame.style.border = "0";
+  frame.style.pointerEvents = "none";
+  document.body.appendChild(frame);
+
+  const doc = frame.contentDocument;
+  if (!doc) {
+    frame.remove();
+    throw new Error("캡처용 HTML 문서를 만들 수 없습니다.");
+  }
+
+  doc.open();
+  doc.write(html);
+  doc.close();
+
+  const captureStyle = doc.createElement("style");
+  captureStyle.textContent = `
+    html {
+      width: ${CAPTURE_WIDTH}px !important;
+      min-width: ${CAPTURE_WIDTH}px !important;
+      max-width: ${CAPTURE_WIDTH}px !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      overflow: visible !important;
+    }
+    body {
+      width: ${CAPTURE_WIDTH}px !important;
+      min-width: ${CAPTURE_WIDTH}px !important;
+      max-width: ${CAPTURE_WIDTH}px !important;
+      margin: 0 !important;
+      overflow: visible !important;
+      transform: none !important;
+    }
+  `;
+  doc.head.appendChild(captureStyle);
+
+  await new Promise<void>((resolve) => window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolve())));
+  if ("fonts" in doc) await doc.fonts.ready;
+
+  const target = doc.body;
+  if (!target) {
+    frame.remove();
+    throw new Error("캡처할 본문을 찾을 수 없습니다.");
+  }
+
+  await waitForImages(target);
+  const height = Math.ceil(Math.max(target.scrollHeight, target.getBoundingClientRect().height));
+  frame.style.height = `${height}px`;
+  await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+
+  return { frame, doc, target };
 }
 
 const assetDataUrlCache = new Map<string, string>();
@@ -532,6 +822,8 @@ async function renderDownloadHtml(data: TheaterData, presets: CharacterPreset[],
   );
 
   const exportData: TheaterData = {
+    ...data,
+    labelFontOffset: clampLabelFontOffset(data.labelFontOffset ?? 0),
     blocks: await Promise.all(
       data.blocks.map(async (block) => {
         if (!isSceneCard(block)) return block;
@@ -594,6 +886,11 @@ function getDefaultTemplateName(data: TheaterData) {
   return titleBlock?.content.replace(/\[[^\]]+\]|\[\/[^\]]+\]|\*\*|\/\//g, "").trim() || "새 템플릿";
 }
 
+function makeCaptureFilename() {
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+  return `theater-capture-${stamp}.png`;
+}
+
 function TextArea({ value, onChange, rows = 3 }: { value: string; onChange: (value: string) => void; rows?: number }) {
   return <textarea value={value} rows={rows} onChange={(event) => onChange(event.target.value)} />;
 }
@@ -601,9 +898,10 @@ function TextArea({ value, onChange, rows = 3 }: { value: string; onChange: (val
 function RichTextArea({ value, onChange, rows = 3 }: { value: string; onChange: (value: string) => void; rows?: number }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const [color, setColor] = useState("#c8a96e");
-  const [fontSize, setFontSize] = useState(14);
+  const [fontSizeInput, setFontSizeInput] = useState(String(DEFAULT_TEXT_STYLE.fontSize ?? 16));
+  const getSafeFontSize = () => clampFontSize(fontSizeInput.trim() ? Number(fontSizeInput) : (DEFAULT_TEXT_STYLE.fontSize ?? 16));
   const changeFontSize = (delta: number) => {
-    setFontSize((current) => Math.min(48, Math.max(9, current + delta)));
+    setFontSizeInput((current) => String(clampFontSize((current.trim() ? Number(current) : (DEFAULT_TEXT_STYLE.fontSize ?? 16)) + delta)));
   };
 
   const wrapSelection = (before: string, after: string, fallback: string) => {
@@ -643,10 +941,11 @@ function RichTextArea({ value, onChange, rows = 3 }: { value: string; onChange: 
           <span className="sizeStepper">
             <input
               type="number"
-              min={9}
-              max={48}
-              value={fontSize}
-              onChange={(event) => setFontSize(Math.min(48, Math.max(9, Number(event.target.value) || 9)))}
+              min={MIN_FONT_SIZE}
+              max={MAX_FONT_SIZE}
+              value={fontSizeInput}
+              onChange={(event) => setFontSizeInput(event.target.value)}
+              onBlur={() => setFontSizeInput(String(getSafeFontSize()))}
             />
             <span className="stepperButtons">
               <button type="button" onClick={() => changeFontSize(1)} aria-label="글자 크기 증가">
@@ -658,8 +957,12 @@ function RichTextArea({ value, onChange, rows = 3 }: { value: string; onChange: 
             </span>
           </span>
         </label>
-        <button type="button" onClick={() => wrapSelection(`[size=${fontSize}]`, "[/size]", "크기 텍스트")} title="선택 글자 크기 적용">
+        <button type="button" onClick={() => wrapSelection(`[size=${getSafeFontSize()}]`, "[/size]", "크기 텍스트")} title="선택 글자 크기 적용">
           적용
+        </button>
+        <button type="button" onClick={() => wrapSelection("[ruby=루비]", "[/ruby]", "본문")} title="선택 글자 위에 루비 문자 추가">
+          <Languages size={15} />
+          루비
         </button>
       </div>
       <textarea ref={ref} value={value} rows={rows} onChange={(event) => onChange(event.target.value)} />
@@ -684,14 +987,19 @@ function CharacterImageManager({
         {presets.map((preset) => (
           <label className="characterChip" key={preset.id}>
             <span className="miniAvatar" style={{ borderColor: preset.ring }}>
-              {preset.imageData ? <img src={preset.imageData} alt="" /> : preset.name.slice(0, 2)}
+              {preset.imageData ? <img key={preset.imageData} src={preset.imageData} alt="" /> : preset.name.slice(0, 2)}
             </span>
             <span>{preset.name}</span>
             <input
               type="file"
               accept="image/*"
+              onClick={(event) => {
+                event.currentTarget.value = "";
+              }}
               onChange={(event) => {
+                const input = event.currentTarget;
                 const file = event.target.files?.[0];
+                input.value = "";
                 if (!file) return;
                 readImageFile(file, (imageData) => {
                   setPresets((current) => current.map((item) => (item.id === preset.id ? { ...item, imageData } : item)));
@@ -705,7 +1013,7 @@ function CharacterImageManager({
   );
 }
 
-function SceneBlockEditor({
+const SceneBlockEditor = React.memo(function SceneBlockEditor({
   block,
   presets,
   onChange
@@ -726,13 +1034,24 @@ function SceneBlockEditor({
           <input
             type="file"
             accept="image/*"
+            onClick={(event) => {
+              event.currentTarget.value = "";
+            }}
             onChange={(event) => {
+              const input = event.currentTarget;
               const file = event.target.files?.[0];
+              input.value = "";
               if (!file) return;
               readImageFile(file, (imageData) => onChange({ ...block, imageData }));
             }}
           />
         </label>
+        {block.imageData ? (
+          <button type="button" className="danger" onClick={() => onChange({ ...block, imageData: undefined })}>
+            <Trash2 size={15} />
+            이미지 제거
+          </button>
+        ) : null}
         <RichTextArea value={block.desc} rows={4} onChange={(desc) => onChange({ ...block, desc })} />
       </div>
     );
@@ -741,7 +1060,7 @@ function SceneBlockEditor({
   if (block.type === "character") {
     return (
       <div className="fieldGrid">
-        <select value={block.characterId} onChange={(event) => onChange({ ...block, characterId: event.target.value })}>
+        <select value={normalizeCharacterId(block.characterId)} onChange={(event) => onChange({ ...block, characterId: event.target.value })}>
           {presets.map((preset) => (
             <option key={preset.id} value={preset.id}>
               {preset.name}
@@ -799,18 +1118,20 @@ function SceneBlockEditor({
       <RichTextArea value={block.text} rows={4} onChange={(text) => onChange({ ...block, text })} />
     </div>
   );
-}
+}, (prev, next) => prev.block === next.block && prev.presets === next.presets);
 
-function SceneEditor({
+const SceneEditor = React.memo(function SceneEditor({
   scene,
   presets,
-  onChange
+  onChange,
+  onBlockChange
 }: {
   scene: SceneCardData;
   presets: CharacterPreset[];
   onChange: (scene: SceneCardData) => void;
+  onBlockChange: (sceneId: string, blockId: string, block: SceneBlock) => void;
 }) {
-  const defaultCharacterId = presets[0]?.id ?? "unknown";
+  const defaultCharacterId = presets[0]?.id ?? "etc";
 
   return (
     <section className="sceneEditor">
@@ -842,24 +1163,25 @@ function SceneEditor({
           <SceneBlockEditor
             block={block}
             presets={presets}
-            onChange={(nextBlock) => onChange({ ...scene, blocks: scene.blocks.map((item) => (item.id === block.id ? nextBlock : item)) })}
+            onChange={(nextBlock) => onBlockChange(scene.id, block.id, nextBlock)}
           />
         </div>
       ))}
     </section>
   );
-}
+}, (prev, next) => prev.scene === next.scene && prev.presets === next.presets);
 
 export default function TheaterToolBuilder() {
-  const [data, setData] = useState<TheaterData>(defaultTemplate as TheaterData);
+  const [data, setData] = useState<TheaterData>(() => normalizeTheaterData(defaultTemplate as TheaterData));
   const [history, setHistory] = useState<TheaterData[]>([]);
   const [future, setFuture] = useState<TheaterData[]>([]);
-  const [presets, setPresets] = useState<CharacterPreset[]>(CHARACTER_PRESETS);
+  const [presets, setPresets] = useState<CharacterPreset[]>(() => normalizeCharacterPresets(CHARACTER_PRESETS));
   const [roomInput, setRoomInput] = useState(() => loadSavedRoomCode());
   const [activeRoomCode, setActiveRoomCode] = useState(() => loadSavedRoomCode());
   const [templates, setTemplates] = useState<SavedTemplate[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [templatesMessage, setTemplatesMessage] = useState("");
+  const [isCapturing, setIsCapturing] = useState(false);
   const [editorPercent, setEditorPercent] = useState(52);
   const [isResizing, setIsResizing] = useState(false);
   const [theme, setTheme] = useState<ThemeMode>("dark");
@@ -867,7 +1189,8 @@ export default function TheaterToolBuilder() {
   const splitRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLIFrameElement>(null);
   const previewScrollRef = useRef({ x: 0, y: 0 });
-  const html = useMemo(() => renderHtml(data, presets, theme), [data, presets, theme]);
+  const [previewBody, setPreviewBody] = useState(() => renderPreviewBody(data, presets));
+  const [previewCss, setPreviewCss] = useState(() => renderCss(data));
 
   useEffect(() => {
     const roomCode = normalizeRoomCode(activeRoomCode);
@@ -900,10 +1223,19 @@ export default function TheaterToolBuilder() {
     };
   }, [activeRoomCode]);
 
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setPreviewBody(renderPreviewBody(data, presets));
+      setPreviewCss(renderCss(data));
+    }, 120);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [data, presets]);
+
   const commitData = (next: TheaterData | ((current: TheaterData) => TheaterData)) => {
     setData((current) => {
       const resolved = typeof next === "function" ? (next as (current: TheaterData) => TheaterData)(current) : next;
-      if (resolved === current || JSON.stringify(resolved) === JSON.stringify(current)) return current;
+      if (resolved === current) return current;
       setHistory((items) => [...items.slice(-79), current]);
       setFuture([]);
       return resolved;
@@ -930,32 +1262,87 @@ export default function TheaterToolBuilder() {
     });
   };
 
-  useLayoutEffect(() => {
+  const capturePreview = async () => {
+    setIsCapturing(true);
+    let captureFrame: HTMLIFrameElement | null = null;
+    try {
+      const exportHtml = await renderDownloadHtml(data, presets, theme);
+      const { frame, doc, target } = await createCaptureFrame(exportHtml);
+      captureFrame = frame;
+
+      const rect = target.getBoundingClientRect();
+      const width = Math.ceil(rect.width || target.scrollWidth);
+      const height = Math.ceil(Math.max(target.scrollHeight, rect.height));
+      const backgroundColor = doc.defaultView?.getComputedStyle(target).backgroundColor || "#0f0e0d";
+      const pixelRatio = height > 12000 ? 1 : Math.min(2, window.devicePixelRatio || 1);
+      const dataUrl = await toPng(target, {
+        cacheBust: true,
+        pixelRatio,
+        width,
+        height,
+        backgroundColor,
+        style: {
+          width: `${width}px`,
+          minHeight: `${height}px`,
+          height: `${height}px`,
+          overflow: "visible"
+        }
+      });
+
+      downloadDataUrl(makeCaptureFilename(), dataUrl);
+    } catch (error) {
+      window.alert(error instanceof Error ? `캡처에 실패했습니다: ${error.message}` : "캡처에 실패했습니다.");
+    } finally {
+      captureFrame?.remove();
+      setIsCapturing(false);
+    }
+  };
+
+  useEffect(() => {
     const frame = previewRef.current;
-    if (!frame) return;
+    const win = frame?.contentWindow;
+    if (!win) return;
 
     const rememberScroll = () => {
-      const win = frame.contentWindow;
-      if (!win) return;
       previewScrollRef.current = { x: win.scrollX, y: win.scrollY };
     };
 
-    const restoreScroll = () => {
-      const win = frame.contentWindow;
-      if (!win) return;
-      win.scrollTo(previewScrollRef.current.x, previewScrollRef.current.y);
-    };
-
-    frame.contentWindow?.addEventListener("scroll", rememberScroll, { passive: true });
-    frame.addEventListener("load", restoreScroll);
-    window.requestAnimationFrame(restoreScroll);
+    win.addEventListener("scroll", rememberScroll, { passive: true });
 
     return () => {
       rememberScroll();
-      frame.contentWindow?.removeEventListener("scroll", rememberScroll);
-      frame.removeEventListener("load", restoreScroll);
+      win.removeEventListener("scroll", rememberScroll);
     };
-  }, [html]);
+  }, []);
+
+  useLayoutEffect(() => {
+    const frame = previewRef.current;
+    const doc = frame?.contentDocument;
+    const win = frame?.contentWindow;
+    if (!doc || !win) return;
+
+    previewScrollRef.current = { x: win.scrollX, y: win.scrollY };
+
+    if (!doc.getElementById("preview-css") || !doc.body) {
+      doc.open();
+      doc.write(renderPreviewShell(previewCss, theme));
+      doc.close();
+    }
+
+    const styleElement = doc.getElementById("preview-css");
+    if (styleElement) styleElement.textContent = previewCss;
+
+    if (doc.body) {
+      doc.body.className = `theme-${theme}`;
+      doc.body.innerHTML = previewBody;
+    }
+
+    const restoreScroll = () => {
+      win.scrollTo(previewScrollRef.current.x, previewScrollRef.current.y);
+    };
+
+    window.requestAnimationFrame(restoreScroll);
+  }, [previewBody, previewCss, theme]);
 
   useLayoutEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -976,7 +1363,48 @@ export default function TheaterToolBuilder() {
   }, [data, history, future]);
 
   const updateBlock = (id: string, nextBlock: PageBlock) => {
-    commitData((current) => ({ blocks: current.blocks.map((block) => (block.id === id ? nextBlock : block)) }));
+    commitData((current) => ({ ...current, blocks: current.blocks.map((block) => (block.id === id ? nextBlock : block)) }));
+  };
+
+  const updateSceneBlock = (sceneId: string, blockId: string, nextBlock: SceneBlock) => {
+    commitData((current) => ({
+      ...current,
+      blocks: current.blocks.map((block) => {
+        if (block.id !== sceneId || !isSceneCard(block)) return block;
+        return {
+          ...block,
+          blocks: block.blocks.map((sceneBlock) => (sceneBlock.id === blockId ? nextBlock : sceneBlock))
+        };
+      })
+    }));
+  };
+
+  const resetBodyFontSizes = () => {
+    commitData((current) => ({
+      ...current,
+      blocks: current.blocks.map((block) => updatePageBlockFontSizes(block, { mode: "reset" }))
+    }));
+  };
+
+  const shiftBodyFontSizes = (delta: -1 | 1) => {
+    commitData((current) => ({
+      ...current,
+      blocks: current.blocks.map((block) => updatePageBlockFontSizes(block, { mode: "shift", delta }))
+    }));
+  };
+
+  const resetLabelFontSizes = () => {
+    commitData((current) => ({
+      ...current,
+      labelFontOffset: 0
+    }));
+  };
+
+  const shiftLabelFontSizes = (delta: -1 | 1) => {
+    commitData((current) => ({
+      ...current,
+      labelFontOffset: clampLabelFontOffset((current.labelFontOffset ?? 0) + delta)
+    }));
   };
 
   const enterTemplateRoom = () => {
@@ -1029,8 +1457,8 @@ export default function TheaterToolBuilder() {
   };
 
   const loadTemplate = (template: SavedTemplate) => {
-    commitData(template.data);
-    setPresets(template.presets);
+    commitData(normalizeTheaterData(template.data));
+    setPresets(normalizeCharacterPresets(template.presets));
   };
 
   const deleteTemplate = async (templateId: string) => {
@@ -1055,8 +1483,8 @@ export default function TheaterToolBuilder() {
     const reader = new FileReader();
     reader.onload = () => {
       const parsed = JSON.parse(String(reader.result || "{}")) as { data?: TheaterData; presets?: CharacterPreset[] };
-      if (parsed.data?.blocks) commitData(parsed.data);
-      if (parsed.presets) setPresets(parsed.presets);
+      if (parsed.data?.blocks) commitData(normalizeTheaterData(parsed.data));
+      if (parsed.presets) setPresets(normalizeCharacterPresets(parsed.presets));
     };
     reader.readAsText(file);
   };
@@ -1124,6 +1552,10 @@ export default function TheaterToolBuilder() {
             <Download size={16} />
             HTML 저장
           </button>
+          <button type="button" onClick={capturePreview} disabled={isCapturing}>
+            <Camera size={16} />
+            {isCapturing ? "캡처 중" : "PNG 캡처"}
+          </button>
         </div>
       </header>
 
@@ -1131,6 +1563,40 @@ export default function TheaterToolBuilder() {
         <section className="editorPane">
           <div className="editorTools">
             <CharacterImageManager presets={presets} setPresets={setPresets} />
+            <section className="panel">
+              <div className="panelTitle">
+                <Palette size={18} />
+                폰트 관리
+              </div>
+              <div className="fontControlGroup">
+                <button type="button" onClick={resetBodyFontSizes} title="본문 폰트 크기를 종류별 기본값으로 되돌림">
+                  <RotateCcw size={15} />
+                  본문 재설정
+                </button>
+                <div className="fontBatchButtons">
+                  <button type="button" onClick={() => shiftBodyFontSizes(-1)} title="본문 폰트 크기 1단계 감소">
+                    본문 -1
+                  </button>
+                  <button type="button" onClick={() => shiftBodyFontSizes(1)} title="본문 폰트 크기 1단계 증가">
+                    본문 +1
+                  </button>
+                </div>
+              </div>
+              <div className="fontControlGroup">
+                <button type="button" onClick={resetLabelFontSizes} title="라벨 폰트 크기를 기본값으로 되돌림">
+                  <RotateCcw size={15} />
+                  라벨 재설정
+                </button>
+                <div className="fontBatchButtons">
+                  <button type="button" onClick={() => shiftLabelFontSizes(-1)} title="라벨 폰트 크기 1단계 감소">
+                    라벨 -1
+                  </button>
+                  <button type="button" onClick={() => shiftLabelFontSizes(1)} title="라벨 폰트 크기 1단계 증가">
+                    라벨 +1
+                  </button>
+                </div>
+              </div>
+            </section>
             <section className="panel">
               <div className="panelTitle">
                 <FileJson size={18} />
@@ -1187,16 +1653,16 @@ export default function TheaterToolBuilder() {
                 <Plus size={18} />
                 블록 추가
               </div>
-              <button type="button" onClick={() => commitData((current) => ({ blocks: [...current.blocks, createModuleBlock("title")] }))}>
+              <button type="button" onClick={() => commitData((current) => ({ ...current, blocks: [...current.blocks, createModuleBlock("title")] }))}>
                 제목
               </button>
-              <button type="button" onClick={() => commitData((current) => ({ blocks: [...current.blocks, createModuleBlock("subtitle")] }))}>
+              <button type="button" onClick={() => commitData((current) => ({ ...current, blocks: [...current.blocks, createModuleBlock("subtitle")] }))}>
                 부제
               </button>
-              <button type="button" onClick={() => commitData((current) => ({ blocks: [...current.blocks, createModuleBlock("narration")] }))}>
+              <button type="button" onClick={() => commitData((current) => ({ ...current, blocks: [...current.blocks, createModuleBlock("narration")] }))}>
                 나레이션
               </button>
-              <button type="button" onClick={() => commitData((current) => ({ blocks: [...current.blocks, createSceneCard()] }))}>
+              <button type="button" onClick={() => commitData((current) => ({ ...current, blocks: [...current.blocks, createSceneCard()] }))}>
                 장면
               </button>
             </section>
@@ -1208,19 +1674,19 @@ export default function TheaterToolBuilder() {
                 <div className="blockHeader">
                   <strong>{isSceneCard(block) ? "장면" : MODULE_LABELS[block.moduleType]}</strong>
                   <div>
-                    <button type="button" className="iconButton" onClick={() => commitData({ blocks: moveArrayItem(data.blocks, index, -1) })}>
+                    <button type="button" className="iconButton" onClick={() => commitData((current) => ({ ...current, blocks: moveArrayItem(current.blocks, index, -1) }))}>
                       <ArrowUp size={15} />
                     </button>
-                    <button type="button" className="iconButton" onClick={() => commitData({ blocks: moveArrayItem(data.blocks, index, 1) })}>
+                    <button type="button" className="iconButton" onClick={() => commitData((current) => ({ ...current, blocks: moveArrayItem(current.blocks, index, 1) }))}>
                       <ArrowDown size={15} />
                     </button>
-                    <button type="button" className="iconButton danger" onClick={() => commitData({ blocks: data.blocks.filter((item) => item.id !== block.id) })}>
+                    <button type="button" className="iconButton danger" onClick={() => commitData((current) => ({ ...current, blocks: current.blocks.filter((item) => item.id !== block.id) }))}>
                       <Trash2 size={15} />
                     </button>
                   </div>
                 </div>
                 {isSceneCard(block) ? (
-                  <SceneEditor scene={block} presets={presets} onChange={(scene) => updateBlock(block.id, scene)} />
+                  <SceneEditor scene={block} presets={presets} onChange={(scene) => updateBlock(block.id, scene)} onBlockChange={updateSceneBlock} />
                 ) : (
                   <div className="fieldGrid">
                     <RichTextArea value={block.content} rows={block.moduleType === "narration" ? 5 : 2} onChange={(content) => updateBlock(block.id, { ...block, content })} />
@@ -1238,7 +1704,7 @@ export default function TheaterToolBuilder() {
             <Eye size={17} />
             미리보기
           </div>
-          <iframe ref={previewRef} className="previewFrame" title="미리보기" srcDoc={html} />
+          <iframe ref={previewRef} className="previewFrame" title="미리보기" />
           {isResizing ? <div className="dragShield" /> : null}
         </section>
       </div>
@@ -1281,6 +1747,7 @@ const appCss = `
   --scroll-track: #e6dccd;
   --scroll-thumb: rgb(200, 169, 110);
 }
+.appShell, .appShell * { box-sizing: border-box; }
 html { scrollbar-color: rgb(200, 169, 110) #1b1916; scrollbar-width: thin; }
 body { margin: 0; background: #12110f; color: #efe8dc; font-family: Pretendard, 'Noto Sans KR', system-ui, sans-serif; }
 body:has(.appShell.theme-light) { background: #f3eee6; color: #28231e; }
@@ -1292,7 +1759,7 @@ button, input, textarea, select { font: inherit; }
 button { min-height: 36px; border: 1px solid var(--app-border-2); background: var(--app-control); color: var(--app-text); padding: 7px 10px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; cursor: pointer; }
 button:hover, button.active { border-color: var(--app-accent); color: var(--app-accent-soft); }
 button:disabled { opacity: 0.42; cursor: not-allowed; }
-input, textarea, select { width: 100%; border: 1px solid var(--app-border-2); background: var(--app-control-2); color: var(--app-text); border-radius: 8px; padding: 9px 10px; }
+input, textarea, select { width: 100%; max-width: 100%; min-width: 0; border: 1px solid var(--app-border-2); background: var(--app-control-2); color: var(--app-text); border-radius: 8px; padding: 9px 10px; }
 textarea { resize: vertical; line-height: 1.6; }
 .appShell { min-height: 100vh; background: var(--app-bg); color: var(--app-text); }
 .toolbar { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 18px 24px; border-bottom: 1px solid var(--app-border); background: color-mix(in srgb, var(--app-bg) 96%, transparent); backdrop-filter: blur(12px); }
@@ -1312,6 +1779,9 @@ textarea { resize: vertical; line-height: 1.6; }
 .panel { display: grid; gap: 8px; align-content: start; }
 .panelTitle, .blockHeader { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; color: var(--app-accent-soft); font-weight: 700; }
 .panelTitle { justify-content: flex-start; }
+.fontControlGroup { display: grid; gap: 7px; padding: 9px; border: 1px solid var(--app-border); border-radius: 8px; background: var(--app-surface-2); }
+.fontBatchButtons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.fontBatchButtons button { padding-left: 8px; padding-right: 8px; }
 .emptyTemplates { padding: 10px; border: 1px dashed var(--app-border-2); border-radius: 8px; color: var(--app-faint); font-size: 12px; text-align: center; }
 .roomBox { display: grid; grid-template-columns: minmax(0, 1fr) 58px; gap: 7px; }
 .roomBox button { padding-left: 8px; padding-right: 8px; }
@@ -1337,13 +1807,13 @@ textarea { resize: vertical; line-height: 1.6; }
 .blockHeader > div { display: flex; gap: 6px; }
 .iconButton { width: 34px; min-height: 34px; padding: 0; }
 .danger:hover { border-color: #e37a7a; color: #ffb4b4; }
-.fieldGrid { display: grid; gap: 9px; }
+.fieldGrid { display: grid; gap: 9px; min-width: 0; }
 .lineEditor { display: grid; grid-template-columns: 110px minmax(0, 1fr) 34px; gap: 7px; }
 .lineEditorRich { display: grid; gap: 7px; padding: 8px; border: 1px solid var(--app-border); border-radius: 8px; background: var(--app-surface-3); }
 .lineMeta { display: grid; grid-template-columns: minmax(0, 1fr) 34px; gap: 7px; }
 .fileButton { min-height: 36px; border: 1px dashed var(--app-border-2); background: var(--app-surface-2); border-radius: 8px; padding: 8px 10px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; cursor: pointer; color: var(--app-dim); }
 .fileButton input { display: none; }
-.richTextBox { display: grid; gap: 6px; }
+.richTextBox { display: grid; gap: 6px; min-width: 0; }
 .inlineToolbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .inlineToolbar button { min-height: 30px; padding: 5px 8px; font-size: 12px; }
 .inlineColor { min-height: 30px; border: 1px solid var(--app-border-2); background: var(--app-control); color: var(--app-text); padding: 4px 7px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; }
