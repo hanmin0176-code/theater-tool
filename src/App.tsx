@@ -1,4 +1,4 @@
-import React, { ChangeEvent, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, { ChangeEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDown,
   ArrowUp,
@@ -118,6 +118,11 @@ type SavedTemplate = {
   createdAt: string;
   data: TheaterData;
   presets: CharacterPreset[];
+};
+
+type TemplatesApiResponse = {
+  templates?: SavedTemplate[];
+  error?: string;
 };
 
 const makeId = () => Math.random().toString(36).slice(2, 10);
@@ -546,21 +551,42 @@ async function renderDownloadHtml(data: TheaterData, presets: CharacterPreset[],
   return renderHtml(exportData, exportPresets, theme);
 }
 
-const TEMPLATE_STORAGE_KEY = "theater-tool-templates";
+const ROOM_STORAGE_KEY = "theater-tool-room-code";
+const TEMPLATES_API_PATH = "/.netlify/functions/templates";
 
-function loadSavedTemplates(): SavedTemplate[] {
+function loadSavedRoomCode() {
   try {
-    const raw = window.localStorage.getItem(TEMPLATE_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as SavedTemplate[];
-    return Array.isArray(parsed) ? parsed : [];
+    return window.localStorage.getItem(ROOM_STORAGE_KEY) || "";
   } catch {
-    return [];
+    return "";
   }
 }
 
-function saveTemplates(templates: SavedTemplate[]) {
-  window.localStorage.setItem(TEMPLATE_STORAGE_KEY, JSON.stringify(templates));
+function saveRoomCode(roomCode: string) {
+  window.localStorage.setItem(ROOM_STORAGE_KEY, roomCode);
+}
+
+function normalizeRoomCode(roomCode: string) {
+  return roomCode.trim().replace(/\s+/g, " ");
+}
+
+function validateRoomCode(roomCode: string) {
+  const length = Array.from(roomCode).length;
+  if (length < 6) return "접속코드는 6글자 이상이어야 합니다.";
+  if (length > 40) return "접속코드는 40글자 이하로 입력해주세요.";
+  return "";
+}
+
+async function requestTemplates(method: "GET" | "POST" | "DELETE", roomCode: string, payload?: Record<string, unknown>) {
+  const url = method === "GET" ? `${TEMPLATES_API_PATH}?roomCode=${encodeURIComponent(roomCode)}` : TEMPLATES_API_PATH;
+  const response = await fetch(url, {
+    method,
+    headers: method === "GET" ? undefined : { "content-type": "application/json" },
+    body: method === "GET" ? undefined : JSON.stringify({ roomCode, ...payload })
+  });
+  const result = (await response.json()) as TemplatesApiResponse;
+  if (!response.ok) throw new Error(result.error || "템플릿 저장소 요청에 실패했습니다.");
+  return Array.isArray(result.templates) ? result.templates : [];
 }
 
 function getDefaultTemplateName(data: TheaterData) {
@@ -829,7 +855,11 @@ export default function TheaterToolBuilder() {
   const [history, setHistory] = useState<TheaterData[]>([]);
   const [future, setFuture] = useState<TheaterData[]>([]);
   const [presets, setPresets] = useState<CharacterPreset[]>(CHARACTER_PRESETS);
-  const [templates, setTemplates] = useState<SavedTemplate[]>(() => loadSavedTemplates());
+  const [roomInput, setRoomInput] = useState(() => loadSavedRoomCode());
+  const [activeRoomCode, setActiveRoomCode] = useState(() => loadSavedRoomCode());
+  const [templates, setTemplates] = useState<SavedTemplate[]>([]);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+  const [templatesMessage, setTemplatesMessage] = useState("");
   const [editorPercent, setEditorPercent] = useState(52);
   const [isResizing, setIsResizing] = useState(false);
   const [theme, setTheme] = useState<ThemeMode>("dark");
@@ -838,6 +868,37 @@ export default function TheaterToolBuilder() {
   const previewRef = useRef<HTMLIFrameElement>(null);
   const previewScrollRef = useRef({ x: 0, y: 0 });
   const html = useMemo(() => renderHtml(data, presets, theme), [data, presets, theme]);
+
+  useEffect(() => {
+    const roomCode = normalizeRoomCode(activeRoomCode);
+    if (!roomCode) {
+      setTemplates([]);
+      setTemplatesMessage("");
+      return;
+    }
+
+    let cancelled = false;
+    setTemplatesLoading(true);
+    setTemplatesMessage("템플릿을 불러오는 중입니다.");
+    requestTemplates("GET", roomCode)
+      .then((nextTemplates) => {
+        if (cancelled) return;
+        setTemplates(nextTemplates);
+        setTemplatesMessage(nextTemplates.length ? "" : "이 접속코드에는 아직 저장된 템플릿이 없습니다.");
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setTemplates([]);
+        setTemplatesMessage(error instanceof Error ? error.message : "템플릿을 불러오지 못했습니다.");
+      })
+      .finally(() => {
+        if (!cancelled) setTemplatesLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeRoomCode]);
 
   const commitData = (next: TheaterData | ((current: TheaterData) => TheaterData)) => {
     setData((current) => {
@@ -918,12 +979,33 @@ export default function TheaterToolBuilder() {
     commitData((current) => ({ blocks: current.blocks.map((block) => (block.id === id ? nextBlock : block)) }));
   };
 
-  const persistTemplates = (nextTemplates: SavedTemplate[]) => {
-    setTemplates(nextTemplates);
-    saveTemplates(nextTemplates);
+  const enterTemplateRoom = () => {
+    const roomCode = normalizeRoomCode(roomInput);
+    const error = validateRoomCode(roomCode);
+    if (error) {
+      setTemplatesMessage(error);
+      return;
+    }
+    saveRoomCode(roomCode);
+    setRoomInput(roomCode);
+    setActiveRoomCode(roomCode);
   };
 
-  const saveCurrentTemplate = () => {
+  const leaveTemplateRoom = () => {
+    saveRoomCode("");
+    setRoomInput("");
+    setActiveRoomCode("");
+    setTemplates([]);
+    setTemplatesMessage("");
+  };
+
+  const saveCurrentTemplate = async () => {
+    const roomCode = normalizeRoomCode(activeRoomCode);
+    const error = validateRoomCode(roomCode);
+    if (error) {
+      setTemplatesMessage(error);
+      return;
+    }
     const name = window.prompt("저장할 템플릿 이름을 입력하세요.", getDefaultTemplateName(data));
     if (!name?.trim()) return;
     const nextTemplate: SavedTemplate = {
@@ -933,7 +1015,17 @@ export default function TheaterToolBuilder() {
       data,
       presets
     };
-    persistTemplates([nextTemplate, ...templates]);
+    setTemplatesLoading(true);
+    setTemplatesMessage("템플릿을 저장하는 중입니다.");
+    try {
+      const nextTemplates = await requestTemplates("POST", roomCode, { template: nextTemplate });
+      setTemplates(nextTemplates);
+      setTemplatesMessage("저장했습니다.");
+    } catch (saveError) {
+      setTemplatesMessage(saveError instanceof Error ? saveError.message : "템플릿 저장에 실패했습니다.");
+    } finally {
+      setTemplatesLoading(false);
+    }
   };
 
   const loadTemplate = (template: SavedTemplate) => {
@@ -941,9 +1033,20 @@ export default function TheaterToolBuilder() {
     setPresets(template.presets);
   };
 
-  const deleteTemplate = (templateId: string) => {
+  const deleteTemplate = async (templateId: string) => {
     if (!window.confirm("이 템플릿을 삭제할까요?")) return;
-    persistTemplates(templates.filter((template) => template.id !== templateId));
+    const roomCode = normalizeRoomCode(activeRoomCode);
+    setTemplatesLoading(true);
+    setTemplatesMessage("템플릿을 삭제하는 중입니다.");
+    try {
+      const nextTemplates = await requestTemplates("DELETE", roomCode, { templateId });
+      setTemplates(nextTemplates);
+      setTemplatesMessage(nextTemplates.length ? "삭제했습니다." : "이 접속코드에는 아직 저장된 템플릿이 없습니다.");
+    } catch (deleteError) {
+      setTemplatesMessage(deleteError instanceof Error ? deleteError.message : "템플릿 삭제에 실패했습니다.");
+    } finally {
+      setTemplatesLoading(false);
+    }
   };
 
   const importJson = (event: ChangeEvent<HTMLInputElement>) => {
@@ -1033,11 +1136,35 @@ export default function TheaterToolBuilder() {
                 <FileJson size={18} />
                 템플릿
               </div>
-              <button type="button" onClick={saveCurrentTemplate}>
+              <div className="roomBox">
+                <input
+                  value={roomInput}
+                  onChange={(event) => setRoomInput(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") enterTemplateRoom();
+                  }}
+                  placeholder="접속코드 6글자 이상"
+                />
+                <button type="button" onClick={enterTemplateRoom} disabled={templatesLoading}>
+                  입장
+                </button>
+              </div>
+              {activeRoomCode ? (
+                <div className="roomStatus">
+                  <span>현재 코드: {activeRoomCode}</span>
+                  <button type="button" onClick={leaveTemplateRoom}>
+                    나가기
+                  </button>
+                </div>
+              ) : (
+                <div className="emptyTemplates">접속코드를 입력하면 공유 템플릿 저장소가 열립니다.</div>
+              )}
+              <button type="button" onClick={saveCurrentTemplate} disabled={!activeRoomCode || templatesLoading}>
                 <Plus size={15} />
                 현재 회차 저장
               </button>
-              {templates.length === 0 ? (
+              {templatesMessage ? <div className="templateMessage">{templatesMessage}</div> : null}
+              {activeRoomCode && templates.length === 0 && !templatesLoading ? (
                 <div className="emptyTemplates">저장된 템플릿 없음</div>
               ) : (
                 <div className="templateList">
@@ -1047,7 +1174,7 @@ export default function TheaterToolBuilder() {
                         <span>{template.name}</span>
                         <small>{new Date(template.createdAt).toLocaleString()}</small>
                       </button>
-                      <button type="button" className="iconButton danger" onClick={() => deleteTemplate(template.id)} aria-label="템플릿 삭제">
+                      <button type="button" className="iconButton danger" onClick={() => deleteTemplate(template.id)} aria-label="템플릿 삭제" disabled={templatesLoading}>
                         <Trash2 size={15} />
                       </button>
                     </div>
@@ -1186,6 +1313,12 @@ textarea { resize: vertical; line-height: 1.6; }
 .panelTitle, .blockHeader { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; color: var(--app-accent-soft); font-weight: 700; }
 .panelTitle { justify-content: flex-start; }
 .emptyTemplates { padding: 10px; border: 1px dashed var(--app-border-2); border-radius: 8px; color: var(--app-faint); font-size: 12px; text-align: center; }
+.roomBox { display: grid; grid-template-columns: minmax(0, 1fr) 58px; gap: 7px; }
+.roomBox button { padding-left: 8px; padding-right: 8px; }
+.roomStatus { display: grid; grid-template-columns: minmax(0, 1fr) 58px; gap: 7px; align-items: center; padding: 8px; border: 1px solid var(--app-border); border-radius: 8px; background: var(--app-surface-2); font-size: 12px; color: var(--app-dim); }
+.roomStatus span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.roomStatus button { min-height: 28px; padding: 3px 7px; font-size: 12px; }
+.templateMessage { padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, var(--app-accent) 12%, transparent); color: var(--app-accent-soft); font-size: 12px; line-height: 1.5; }
 .templateList { display: grid; gap: 7px; }
 .templateItem { display: grid; grid-template-columns: minmax(0, 1fr) 34px; gap: 7px; align-items: stretch; }
 .templateLoad { min-width: 0; justify-content: flex-start; align-items: flex-start; flex-direction: column; gap: 1px; text-align: left; }

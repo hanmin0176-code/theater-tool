@@ -1,6 +1,6 @@
 # Theater Tool Builder
 
-React/Vite editor for building theater-style scene posts with character portraits, rich text, preview, HTML export, templates, dark/light themes, and undo/redo.
+React/Vite editor for building theater-style scene posts with character portraits, rich text, preview, HTML export, shared templates, dark/light themes, and undo/redo.
 
 ## Local Development
 
@@ -24,4 +24,6 @@ Netlify uses `netlify.toml`:
 - Build command: `npm run build`
 - Publish directory: `dist`
 
-Template saves currently use browser `localStorage`, so saved templates persist per browser on the deployed site.
+Template saves use Netlify Blobs through `netlify/functions/templates.mjs`.
+
+Users enter an access code of 6+ characters. The same code opens the same shared template list across browsers and PCs. Korean access codes are supported because the server stores templates under a SHA-256 hash of the normalized code.
