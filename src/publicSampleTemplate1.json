@@ -1219,7 +1219,7 @@
     {
       "id": "yuki",
       "name": "유키",
-      "imageData": "",
+      "imageData": "/characters/profiles/yuki/default.png",
       "imagePresetGroups": [
         {
           "id": "yuki-rooftop",

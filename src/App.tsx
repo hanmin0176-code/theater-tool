@@ -1131,12 +1131,12 @@ function mergeCharacterImagePresetGroups(defaults: CharacterPreset | undefined, 
       const incomingGroup = incomingGroupsById.get(group.id);
       const mergedGlobalPresets = group.presets
         .filter((imagePreset) => !hiddenGlobalIds.has(imagePreset.id))
-        .map((imagePreset) => ({ ...imagePreset, ...incomingPresetsById.get(imagePreset.id) }));
+        .map((imagePreset) => mergeImagePresetWithDefaults(imagePreset, incomingPresetsById.get(imagePreset.id)));
       const groupCustomPresets = (incomingGroup?.presets ?? []).filter((imagePreset) => !globalIds.has(imagePreset.id));
       groupCustomPresets.forEach((imagePreset) => usedCustomIds.add(imagePreset.id));
       return {
         ...group,
-        name: incomingGroup?.name ?? group.name,
+        name: preferNonEmptyString(incomingGroup?.name, group.name) ?? group.name,
         presets: [...mergedGlobalPresets, ...groupCustomPresets]
       };
     })
@@ -1181,34 +1181,63 @@ function uniqueStrings(values: string[]) {
   return Array.from(new Set(values.filter(Boolean)));
 }
 
+function preferNonEmptyString(value?: string, fallback?: string) {
+  return value?.trim() ? value : fallback;
+}
+
+function mergeImagePresetWithDefaults(defaultPreset: CharacterImagePreset, incomingPreset?: CharacterImagePreset): CharacterImagePreset {
+  if (!incomingPreset) return defaultPreset;
+  return {
+    ...defaultPreset,
+    ...incomingPreset,
+    name: preferNonEmptyString(incomingPreset.name, defaultPreset.name) ?? defaultPreset.name,
+    imageData: preferNonEmptyString(incomingPreset.imageData, defaultPreset.imageData),
+    imageKey: preferNonEmptyString(incomingPreset.imageKey, defaultPreset.imageKey),
+    imageMimeType: preferNonEmptyString(incomingPreset.imageMimeType, defaultPreset.imageMimeType)
+  };
+}
+
 function normalizeCharacterPresets(presets: CharacterPreset[]) {
-  const seen = new Set<string>();
-  return presets
-    .map((preset) => {
-      const id = normalizeCharacterId(preset.id);
-      const defaults = CHARACTER_PRESETS.find((item) => item.id === id);
-      const hiddenGlobalImagePresetIds = uniqueStrings(preset.hiddenGlobalImagePresetIds ?? []);
-      return {
-        ...defaults,
-        ...preset,
-        id,
-        imagePresetGroups: mergeCharacterImagePresetGroups(defaults, { ...preset, id, hiddenGlobalImagePresetIds }),
-        imagePresets: undefined,
-        hiddenGlobalImagePresetIds: hiddenGlobalImagePresetIds.length ? hiddenGlobalImagePresetIds : undefined,
-        markImageData: preset.markImageData ?? defaults?.markImageData,
-        prisonerNumber: preset.prisonerNumber ?? defaults?.prisonerNumber
-      };
-    })
-    .filter((preset) => {
-      if (seen.has(preset.id)) return false;
-      seen.add(preset.id);
-      return true;
-    })
-    .sort((a, b) => {
-      const aIndex = CHARACTER_PRESET_ORDER.indexOf(a.id);
-      const bIndex = CHARACTER_PRESET_ORDER.indexOf(b.id);
-      return (aIndex === -1 ? Number.MAX_SAFE_INTEGER : aIndex) - (bIndex === -1 ? Number.MAX_SAFE_INTEGER : bIndex);
+  const normalizedById = new Map<string, CharacterPreset>();
+
+  for (const preset of presets) {
+    const id = normalizeCharacterId(preset.id);
+    if (normalizedById.has(id)) continue;
+    const defaults = CHARACTER_PRESETS.find((item) => item.id === id);
+    const hiddenGlobalImagePresetIds = uniqueStrings(preset.hiddenGlobalImagePresetIds ?? []);
+    normalizedById.set(id, {
+      ...defaults,
+      ...preset,
+      id,
+      name: preferNonEmptyString(preset.name, defaults?.name) ?? id,
+      imageData: preferNonEmptyString(preset.imageData, defaults?.imageData),
+      imageKey: preferNonEmptyString(preset.imageKey, defaults?.imageKey),
+      imageMimeType: preferNonEmptyString(preset.imageMimeType, defaults?.imageMimeType),
+      ring: preferNonEmptyString(preset.ring, defaults?.ring) ?? "#bbbbbb",
+      selectedImagePresetId: preferNonEmptyString(preset.selectedImagePresetId, defaults?.selectedImagePresetId),
+      imagePresetGroups: mergeCharacterImagePresetGroups(defaults, { ...preset, id, hiddenGlobalImagePresetIds }),
+      imagePresets: undefined,
+      hiddenGlobalImagePresetIds: hiddenGlobalImagePresetIds.length ? hiddenGlobalImagePresetIds : undefined,
+      markImageData: preferNonEmptyString(preset.markImageData, defaults?.markImageData),
+      markImageKey: preferNonEmptyString(preset.markImageKey, defaults?.markImageKey),
+      prisonerNumber: preset.prisonerNumber ?? defaults?.prisonerNumber
     });
+  }
+
+  for (const defaults of CHARACTER_PRESETS) {
+    if (normalizedById.has(defaults.id)) continue;
+    normalizedById.set(defaults.id, {
+      ...defaults,
+      imagePresetGroups: mergeCharacterImagePresetGroups(defaults, defaults),
+      imagePresets: undefined
+    });
+  }
+
+  return Array.from(normalizedById.values()).sort((a, b) => {
+    const aIndex = CHARACTER_PRESET_ORDER.indexOf(a.id);
+    const bIndex = CHARACTER_PRESET_ORDER.indexOf(b.id);
+    return (aIndex === -1 ? Number.MAX_SAFE_INTEGER : aIndex) - (bIndex === -1 ? Number.MAX_SAFE_INTEGER : bIndex);
+  });
 }
 
 function normalizeTheaterData(data: TheaterData): TheaterData {
@@ -3001,6 +3030,13 @@ export default function TheaterToolBuilder() {
     }));
   };
 
+  const resetTemplateToDefaults = () => {
+    if (!window.confirm("현재 편집 내용을 기본 템플릿으로 초기화할까요? 저장된 템플릿 목록은 삭제되지 않습니다.")) return;
+    commitData(getInitialDefaultData());
+    setPresets(getInitialDefaultPresets());
+    setTemplatesMessage("기본 템플릿으로 초기화했습니다.");
+  };
+
   const enterTemplateRoom = () => {
     const roomCode = normalizeRoomCode(roomInput);
     const error = validateRoomCode(roomCode);
@@ -3436,6 +3472,10 @@ export default function TheaterToolBuilder() {
           <button type="button" onClick={() => downloadFile("theater-data.json", JSON.stringify(createSaveFile(data, presets), null, 2), "application/json")}>
             <FileJson size={16} />
             저장
+          </button>
+          <button type="button" onClick={resetTemplateToDefaults} title="현재 편집 내용을 기본 템플릿으로 되돌립니다.">
+            <RotateCcw size={16} />
+            템플릿 초기화
           </button>
           <button
             type="button"
