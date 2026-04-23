@@ -9,6 +9,7 @@ import {
   Download,
   Eye,
   FileJson,
+  GripVertical,
   ImagePlus,
   Italic,
   Languages,
@@ -22,6 +23,7 @@ import {
 } from "lucide-react";
 import { toPng } from "html-to-image";
 import defaultTemplate from "./defaultTemplate.json";
+import publicSampleTemplate1 from "./publicSampleTemplate1.json";
 
 type ModuleType = "title" | "subtitle" | "narration";
 type SceneBlockType = "sceneHeader" | "character" | "narration" | "afterword" | "tikitaka" | "reference";
@@ -33,10 +35,34 @@ type TextStyle = {
   color?: string;
 };
 
+type CharacterImagePreset = {
+  id: string;
+  name: string;
+  imageData?: string;
+  imageKey?: string;
+  imageMimeType?: string;
+};
+
+type CharacterImagePresetGroup = {
+  id: string;
+  name: string;
+  presets: CharacterImagePreset[];
+  locked?: boolean;
+};
+
 type CharacterPreset = {
   id: string;
   name: string;
-  imageData: string;
+  imageData?: string;
+  imageKey?: string;
+  imageMimeType?: string;
+  imagePresetGroups?: CharacterImagePresetGroup[];
+  imagePresets?: CharacterImagePreset[];
+  selectedImagePresetId?: string;
+  hiddenGlobalImagePresetIds?: string[];
+  markImageData?: string;
+  markImageKey?: string;
+  prisonerNumber?: number;
   ring: string;
 };
 
@@ -56,6 +82,8 @@ type SceneHeaderBlock = {
   desc: string;
   imageLabel: string;
   imageData?: string;
+  imageKey?: string;
+  imageMimeType?: string;
   titleStyle?: TextStyle;
   descStyle?: TextStyle;
 };
@@ -66,6 +94,7 @@ type CharacterBlock = {
   characterId: string;
   role?: string;
   dataTag?: string;
+  imagePresetId?: string;
   text: string;
   textStyle?: TextStyle;
 };
@@ -129,7 +158,7 @@ type TheaterData = {
   labelFontOffset?: number;
 };
 
-type ThemeMode = "dark" | "light";
+type ThemeMode = "blackGold" | "ivoryGold" | "midnightBlue" | "wineRose";
 
 type SavedTemplate = {
   id: string;
@@ -139,9 +168,90 @@ type SavedTemplate = {
   presets: CharacterPreset[];
 };
 
+type SavedTemplateSummary = {
+  id: string;
+  name: string;
+  createdAt: string;
+  bytes?: number;
+  versionCount?: number;
+  deletedAt?: string;
+  expiresAt?: string;
+};
+
+type CharacterPresetLibrary = {
+  updatedAt: string;
+  presets: CharacterPreset[];
+};
+
+type CharacterPresetLibraryMeta = {
+  updatedAt: string;
+  bytes: number;
+};
+
 type TemplatesApiResponse = {
-  templates?: SavedTemplate[];
+  templates?: SavedTemplateSummary[];
+  trashedTemplates?: SavedTemplateSummary[];
+  template?: SavedTemplate;
+  versions?: SavedTemplateVersion[];
+  characterPresetLibrary?: CharacterPresetLibrary | null;
+  characterPresetLibraryMeta?: CharacterPresetLibraryMeta | null;
+  activityLog?: ActivityLogEntry[];
+  usage?: RoomStorageUsage;
   error?: string;
+};
+
+type RoomStorageUsage = {
+  characterLibraryBytes: number;
+  characterLibraryLimitBytes: number;
+  templatesBytes: number;
+  templatesCount: number;
+  trashedTemplatesCount?: number;
+  maxTemplates: number;
+  maxTemplateBytes: number;
+};
+
+type SavedTemplateVersion = {
+  id: string;
+  name: string;
+  savedAt: string;
+  bytes?: number;
+};
+
+type ActivityLogEntry = {
+  id: string;
+  type: string;
+  targetName: string;
+  at: string;
+};
+
+type ImageStorageUsage = {
+  imageBytes: number;
+  imageCount: number;
+  temporaryImageBytes?: number;
+  temporaryImageCount?: number;
+  referencedImageCount?: number;
+  missingImages?: number;
+  imageLimitBytes?: number;
+};
+
+type ImagesApiResponse = {
+  usage?: ImageStorageUsage;
+  imageKey?: string;
+  imageUrl?: string;
+  bytes?: number;
+  mimeType?: string;
+  error?: string;
+};
+
+type TemplatesApiPayload = {
+  templates: SavedTemplateSummary[];
+  trashedTemplates: SavedTemplateSummary[];
+  template: SavedTemplate | null;
+  versions: SavedTemplateVersion[];
+  characterPresetLibrary: CharacterPresetLibrary | null;
+  characterPresetLibraryMeta: CharacterPresetLibraryMeta | null;
+  activityLog: ActivityLogEntry[];
+  usage: RoomStorageUsage | null;
 };
 
 type TheaterSaveFile = {
@@ -151,6 +261,24 @@ type TheaterSaveFile = {
 };
 
 const SCHEMA_VERSION = 1;
+const PUBLIC_SAMPLE_ROOM_CODE = "000000";
+const MAX_IMAGE_PRESET_GROUPS_PER_CHARACTER = 10;
+const MAX_IMAGE_PRESETS_PER_GROUP = 20;
+const LEGACY_IMAGE_PRESET_GROUP_ID = "legacy";
+const IMAGE_UPLOAD_CONCURRENCY = 4;
+const CHARACTER_LIBRARY_LIMIT_BYTES = 5_000_000;
+const TEMPLATE_LIMIT_BYTES = 1_000_000;
+const ROOM_IMAGE_LIMIT_BYTES = 100_000_000;
+const PROFILE_IMAGE_OPTIONS = { maxDimension: 512, targetBytes: 150_000 };
+const SCENE_IMAGE_OPTIONS = { maxDimension: 1200, targetBytes: 400_000 };
+const EXPORT_CONTENT_WIDTH = 900;
+
+const THEME_OPTIONS: Array<{ id: ThemeMode; name: string; colors: [string, string] }> = [
+  { id: "blackGold", name: "블랙/골드", colors: ["#12110f", "#c8a96e"] },
+  { id: "ivoryGold", name: "아이보리/골드", colors: ["#fffaf2", "#8f6f32"] },
+  { id: "midnightBlue", name: "미드나이트/실버", colors: ["#0d1320", "#9fb6d8"] },
+  { id: "wineRose", name: "와인/로즈", colors: ["#1d0f15", "#d6a0a8"] }
+];
 
 const makeId = () => Math.random().toString(36).slice(2, 10);
 
@@ -219,22 +347,338 @@ function clampLabelFontOffset(value: number) {
 }
 
 const CHARACTER_PRESETS: CharacterPreset[] = [
-  { id: "emma", name: "에마", imageData: "/characters/emma.png", ring: "#e7a8ba" },
-  { id: "hiro", name: "히로", imageData: "/characters/hiro.png", ring: "#b51f47" },
-  { id: "anan", name: "안안", imageData: "/characters/anan.png", ring: "#6f81c8" },
-  { id: "noa", name: "노아", imageData: "/characters/noa.png", ring: "#9bb7d4" },
-  { id: "leia", name: "레이아", imageData: "/characters/leia.png", ring: "#d4b27c" },
-  { id: "miria", name: "미리아", imageData: "/characters/miria.png", ring: "#d7bf8b" },
-  { id: "mago", name: "마고", imageData: "/characters/mago.png", ring: "#9a63d8" },
-  { id: "nanoka", name: "나노카", imageData: "/characters/nanoka.png", ring: "#8f939d" },
-  { id: "arisa", name: "아리사", imageData: "/characters/arisa.png", ring: "#b91c1c" },
-  { id: "sherry", name: "셰리", imageData: "/characters/sherry.png", ring: "#7c9ef0" },
-  { id: "hanna", name: "한나", imageData: "/characters/hanna.png", ring: "#a8c65a" },
-  { id: "coco", name: "코코", imageData: "/characters/coco.png", ring: "#ef7d36" },
-  { id: "meruru", name: "메루루", imageData: "/characters/meruru.png", ring: "#b6b6be" },
+  {
+    id: "emma",
+    name: "에마",
+    imageData: "/characters/profiles/emma/default.png",
+    imagePresetGroups: [
+      {
+        id: "emma-emotions",
+        name: "희로애락",
+        locked: true,
+        presets: [
+          { id: "emma-joy", name: "희", imageData: "/characters/profiles/emma/joy.png" },
+          { id: "emma-anger", name: "로", imageData: "/characters/profiles/emma/anger.png" },
+          { id: "emma-sad", name: "애", imageData: "/characters/profiles/emma/sad.png" },
+          { id: "emma-fun", name: "락", imageData: "/characters/profiles/emma/fun.png" }
+        ]
+      },
+      {
+        id: "emma-rooftop",
+        name: "옥상조",
+        locked: true,
+        presets: [
+          { id: "emma-rooftop-01", name: "옥상조 1", imageData: "/characters/profiles/emma/rooftop/rooftop-01.png" },
+          { id: "emma-rooftop-02", name: "옥상조 2", imageData: "/characters/profiles/emma/rooftop/rooftop-02.png" },
+          { id: "emma-rooftop-03", name: "옥상조 3", imageData: "/characters/profiles/emma/rooftop/rooftop-03.png" },
+          { id: "emma-rooftop-04", name: "옥상조 4", imageData: "/characters/profiles/emma/rooftop/rooftop-04.png" },
+          { id: "emma-rooftop-05", name: "옥상조 5", imageData: "/characters/profiles/emma/rooftop/rooftop-05.png" },
+          { id: "emma-rooftop-06", name: "옥상조 6", imageData: "/characters/profiles/emma/rooftop/rooftop-06.png" },
+          { id: "emma-rooftop-trio-01", name: "3인 1", imageData: "/characters/profiles/common/rooftop/trio-01.png" },
+          { id: "emma-rooftop-emma-01", name: "에마 1", imageData: "/characters/profiles/emma/rooftop/emma-01.png" },
+          { id: "emma-rooftop-emma-02", name: "에마 2", imageData: "/characters/profiles/emma/rooftop/emma-02.png" }
+        ]
+      }
+    ],
+    markImageData: "/characters/marks/658-emma.webp",
+    prisonerNumber: 658,
+    ring: "#e7a8ba"
+  },
+  {
+    id: "hiro",
+    name: "히로",
+    imageData: "/characters/hiro.png",
+    imagePresetGroups: [
+      {
+        id: "hiro-emotions",
+        name: "희로애락",
+        locked: true,
+        presets: [
+          { id: "hiro-joy", name: "희", imageData: "/characters/profiles/hiro/joy.png" },
+          { id: "hiro-anger", name: "로", imageData: "/characters/profiles/hiro/anger.png" },
+          { id: "hiro-sad", name: "애", imageData: "/characters/profiles/hiro/sad.png" },
+          { id: "hiro-fun", name: "락", imageData: "/characters/profiles/hiro/fun.png" }
+        ]
+      },
+      {
+        id: "hiro-rooftop",
+        name: "옥상조",
+        locked: true,
+        presets: [
+          { id: "hiro-rooftop-01", name: "옥상조 1", imageData: "/characters/profiles/hiro/rooftop/rooftop-01.png" },
+          { id: "hiro-rooftop-02", name: "옥상조 2", imageData: "/characters/profiles/hiro/rooftop/rooftop-02.png" },
+          { id: "hiro-rooftop-03", name: "옥상조 3", imageData: "/characters/profiles/hiro/rooftop/rooftop-03.png" },
+          { id: "hiro-rooftop-04", name: "옥상조 4", imageData: "/characters/profiles/hiro/rooftop/rooftop-04.png" },
+          { id: "hiro-rooftop-05", name: "옥상조 5", imageData: "/characters/profiles/hiro/rooftop/rooftop-05.png" },
+          { id: "hiro-rooftop-06", name: "옥상조 6", imageData: "/characters/profiles/hiro/rooftop/rooftop-06.png" },
+          { id: "hiro-rooftop-07", name: "옥상조 7", imageData: "/characters/profiles/hiro/rooftop/rooftop-07.png" },
+          { id: "hiro-rooftop-08", name: "옥상조 8", imageData: "/characters/profiles/hiro/rooftop/rooftop-08.png" },
+          { id: "hiro-rooftop-trio-01", name: "3인 1", imageData: "/characters/profiles/common/rooftop/trio-01.png" },
+          { id: "hiro-rooftop-hiro-01", name: "히로 1", imageData: "/characters/profiles/hiro/rooftop/hiro-01.png" },
+          { id: "hiro-rooftop-hiro-02", name: "히로 2", imageData: "/characters/profiles/hiro/rooftop/hiro-02.png" }
+        ]
+      }
+    ],
+    markImageData: "/characters/marks/659-hiro.webp",
+    prisonerNumber: 659,
+    ring: "#b51f47"
+  },
+  {
+    id: "anan",
+    name: "안안",
+    imageData: "/characters/anan.png",
+    imagePresetGroups: [
+      {
+        id: "anan-emotions",
+        name: "희로애락",
+        locked: true,
+        presets: [
+          { id: "anan-joy", name: "희", imageData: "/characters/profiles/anan/joy.png" },
+          { id: "anan-anger", name: "로", imageData: "/characters/profiles/anan/anger.png" },
+          { id: "anan-sad", name: "애", imageData: "/characters/profiles/anan/sad.png" },
+          { id: "anan-fun", name: "락", imageData: "/characters/profiles/anan/fun.png" }
+        ]
+      }
+    ],
+    markImageData: "/characters/marks/660-anan.webp",
+    prisonerNumber: 660,
+    ring: "#6f81c8"
+  },
+  {
+    id: "noa",
+    name: "노아",
+    imageData: "/characters/noa.png",
+    imagePresetGroups: [
+      {
+        id: "noa-emotions",
+        name: "희로애락",
+        locked: true,
+        presets: [
+          { id: "noa-joy", name: "희", imageData: "/characters/profiles/noa/joy.png" },
+          { id: "noa-anger", name: "로", imageData: "/characters/profiles/noa/anger.png" },
+          { id: "noa-sad", name: "애", imageData: "/characters/profiles/noa/sad.png" },
+          { id: "noa-fun", name: "락", imageData: "/characters/profiles/noa/fun.png" }
+        ]
+      }
+    ],
+    markImageData: "/characters/marks/661-noa.webp",
+    prisonerNumber: 661,
+    ring: "#9bb7d4"
+  },
+  {
+    id: "leia",
+    name: "레이아",
+    imageData: "/characters/leia.png",
+    imagePresetGroups: [
+      {
+        id: "leia-emotions",
+        name: "희로애락",
+        locked: true,
+        presets: [
+          { id: "leia-joy", name: "희", imageData: "/characters/profiles/leia/joy.png" },
+          { id: "leia-anger", name: "로", imageData: "/characters/profiles/leia/anger.png" },
+          { id: "leia-sad", name: "애", imageData: "/characters/profiles/leia/sad.png" },
+          { id: "leia-fun", name: "락", imageData: "/characters/profiles/leia/fun.png" }
+        ]
+      }
+    ],
+    markImageData: "/characters/marks/662-leia.webp",
+    prisonerNumber: 662,
+    ring: "#d4b27c"
+  },
+  {
+    id: "miria",
+    name: "미리아",
+    imageData: "/characters/miria.png",
+    imagePresetGroups: [
+      {
+        id: "miria-emotions",
+        name: "희로애락",
+        locked: true,
+        presets: [
+          { id: "miria-joy", name: "희", imageData: "/characters/profiles/miria/joy.png" },
+          { id: "miria-anger", name: "로", imageData: "/characters/profiles/miria/anger.png" },
+          { id: "miria-sad", name: "애", imageData: "/characters/profiles/miria/sad.png" },
+          { id: "miria-fun", name: "락", imageData: "/characters/profiles/miria/fun.png" }
+        ]
+      }
+    ],
+    markImageData: "/characters/marks/663-miria.webp",
+    prisonerNumber: 663,
+    ring: "#d7bf8b"
+  },
+  {
+    id: "mago",
+    name: "마고",
+    imageData: "/characters/mago.png",
+    imagePresetGroups: [
+      {
+        id: "mago-emotions",
+        name: "희로애락",
+        locked: true,
+        presets: [
+          { id: "mago-joy", name: "희", imageData: "/characters/profiles/mago/joy.png" },
+          { id: "mago-anger", name: "로", imageData: "/characters/profiles/mago/anger.png" },
+          { id: "mago-sad", name: "애", imageData: "/characters/profiles/mago/sad.png" },
+          { id: "mago-fun", name: "락", imageData: "/characters/profiles/mago/fun.png" }
+        ]
+      }
+    ],
+    markImageData: "/characters/marks/664-mago.webp",
+    prisonerNumber: 664,
+    ring: "#9a63d8"
+  },
+  {
+    id: "nanoka",
+    name: "나노카",
+    imageData: "/characters/nanoka.png",
+    imagePresetGroups: [
+      {
+        id: "nanoka-emotions",
+        name: "희로애락",
+        locked: true,
+        presets: [
+          { id: "nanoka-joy", name: "희", imageData: "/characters/profiles/nanoka/joy.png" },
+          { id: "nanoka-anger", name: "로", imageData: "/characters/profiles/nanoka/anger.png" },
+          { id: "nanoka-sad", name: "애", imageData: "/characters/profiles/nanoka/sad.png" },
+          { id: "nanoka-fun", name: "락", imageData: "/characters/profiles/nanoka/fun.png" }
+        ]
+      }
+    ],
+    markImageData: "/characters/marks/665-nanoka.webp",
+    prisonerNumber: 665,
+    ring: "#8f939d"
+  },
+  {
+    id: "arisa",
+    name: "아리사",
+    imageData: "/characters/arisa.png",
+    imagePresetGroups: [
+      {
+        id: "arisa-emotions",
+        name: "희로애락",
+        locked: true,
+        presets: [
+          { id: "arisa-joy", name: "희", imageData: "/characters/profiles/arisa/joy.png" },
+          { id: "arisa-anger", name: "로", imageData: "/characters/profiles/arisa/anger.png" },
+          { id: "arisa-sad", name: "애", imageData: "/characters/profiles/arisa/sad.png" },
+          { id: "arisa-fun", name: "락", imageData: "/characters/profiles/arisa/fun.png" }
+        ]
+      }
+    ],
+    markImageData: "/characters/marks/666-arisa.webp",
+    prisonerNumber: 666,
+    ring: "#b91c1c"
+  },
+  {
+    id: "sherry",
+    name: "셰리",
+    imageData: "/characters/sherry.png",
+    imagePresetGroups: [
+      {
+        id: "sherry-emotions",
+        name: "희로애락",
+        locked: true,
+        presets: [
+          { id: "sherry-joy", name: "희", imageData: "/characters/profiles/sherry/joy.png" },
+          { id: "sherry-anger", name: "로", imageData: "/characters/profiles/sherry/anger.png" },
+          { id: "sherry-sad", name: "애", imageData: "/characters/profiles/sherry/sad.png" },
+          { id: "sherry-fun", name: "락", imageData: "/characters/profiles/sherry/fun.png" }
+        ]
+      }
+    ],
+    markImageData: "/characters/marks/667-sherry.webp",
+    prisonerNumber: 667,
+    ring: "#7c9ef0"
+  },
+  {
+    id: "hanna",
+    name: "한나",
+    imageData: "/characters/hanna.png",
+    imagePresetGroups: [
+      {
+        id: "hanna-emotions",
+        name: "희로애락",
+        locked: true,
+        presets: [
+          { id: "hanna-joy", name: "희", imageData: "/characters/profiles/hanna/joy.png" },
+          { id: "hanna-anger", name: "로", imageData: "/characters/profiles/hanna/anger.png" },
+          { id: "hanna-sad", name: "애", imageData: "/characters/profiles/hanna/sad.png" },
+          { id: "hanna-fun", name: "락", imageData: "/characters/profiles/hanna/fun.png" }
+        ]
+      }
+    ],
+    markImageData: "/characters/marks/668-hanna.webp",
+    prisonerNumber: 668,
+    ring: "#a8c65a"
+  },
+  {
+    id: "coco",
+    name: "코코",
+    imageData: "/characters/coco.png",
+    imagePresetGroups: [
+      {
+        id: "coco-emotions",
+        name: "희로애락",
+        locked: true,
+        presets: [
+          { id: "coco-joy", name: "희", imageData: "/characters/profiles/coco/joy.png" },
+          { id: "coco-anger", name: "로", imageData: "/characters/profiles/coco/anger.png" },
+          { id: "coco-sad", name: "애", imageData: "/characters/profiles/coco/sad.png" },
+          { id: "coco-fun", name: "락", imageData: "/characters/profiles/coco/fun.png" }
+        ]
+      }
+    ],
+    markImageData: "/characters/marks/669-coco.webp",
+    prisonerNumber: 669,
+    ring: "#ef7d36"
+  },
+  {
+    id: "meruru",
+    name: "메루루",
+    imageData: "/characters/meruru.png",
+    imagePresetGroups: [
+      {
+        id: "meruru-emotions",
+        name: "희로애락",
+        locked: true,
+        presets: [
+          { id: "meruru-joy", name: "희", imageData: "/characters/profiles/meruru/joy.png" },
+          { id: "meruru-anger", name: "로", imageData: "/characters/profiles/meruru/anger.png" },
+          { id: "meruru-sad", name: "애", imageData: "/characters/profiles/meruru/sad.png" },
+          { id: "meruru-fun", name: "락", imageData: "/characters/profiles/meruru/fun.png" }
+        ]
+      }
+    ],
+    markImageData: "/characters/marks/670-meruru.webp",
+    prisonerNumber: 670,
+    ring: "#b6b6be"
+  },
   { id: "warden", name: "교도소장", imageData: "/characters/warden.png", ring: "#666666" },
   { id: "guard", name: "간수", imageData: "/characters/guard.png", ring: "#444444" },
-  { id: "yuki", name: "유키", imageData: "", ring: "#6b7280" },
+  {
+    id: "yuki",
+    name: "유키",
+    imageData: "/characters/profiles/yuki/default.png",
+    imagePresetGroups: [
+      {
+        id: "yuki-rooftop",
+        name: "옥상조",
+        locked: true,
+        presets: [
+          { id: "yuki-rooftop-01", name: "옥상조 1", imageData: "/characters/profiles/yuki/rooftop/rooftop-01.png" },
+          { id: "yuki-rooftop-02", name: "옥상조 2", imageData: "/characters/profiles/yuki/rooftop/rooftop-02.png" },
+          { id: "yuki-rooftop-03", name: "옥상조 3", imageData: "/characters/profiles/yuki/rooftop/rooftop-03.png" },
+          { id: "yuki-rooftop-04", name: "옥상조 4", imageData: "/characters/profiles/yuki/rooftop/rooftop-04.png" },
+          { id: "yuki-rooftop-05", name: "옥상조 5", imageData: "/characters/profiles/yuki/rooftop/rooftop-05.png" },
+          { id: "yuki-rooftop-trio-01", name: "3인 1", imageData: "/characters/profiles/common/rooftop/trio-01.png" },
+          { id: "yuki-rooftop-yuki-01", name: "유키 1", imageData: "/characters/profiles/yuki/rooftop/yuki-01.png" },
+          { id: "yuki-rooftop-yuki-02", name: "유키 2", imageData: "/characters/profiles/yuki/rooftop/yuki-02.png" }
+        ]
+      }
+    ],
+    ring: "#6b7280"
+  },
   { id: "etc", name: "기타", imageData: "", ring: "#bbbbbb" }
 ];
 
@@ -249,6 +693,8 @@ const CHARACTER_ID_ALIASES: Record<string, string> = {
   sena: "hanna",
   unknown: "warden"
 };
+
+const CHARACTER_PRESET_ORDER = CHARACTER_PRESETS.map((preset) => preset.id);
 
 const sampleData: TheaterData = {
   blocks: [
@@ -343,6 +789,166 @@ const sampleData: TheaterData = {
   ]
 };
 
+function createPublicSampleTemplates(): SavedTemplate[] {
+  const importedSampleTemplate = publicSampleTemplate1 as TheaterSaveFile & TheaterData;
+  const samplePresets = normalizeCharacterPresets(
+    Array.isArray(importedSampleTemplate.presets) ? importedSampleTemplate.presets : CHARACTER_PRESETS
+  );
+  const sampleTemplateData = normalizeTheaterData((importedSampleTemplate.data ?? importedSampleTemplate) as TheaterData);
+  return [
+    {
+      id: "sample-default-template",
+      name: "제작 참고 템플릿 1",
+      createdAt: "2026-04-23T00:00:00.000Z",
+      data: sampleTemplateData,
+      presets: samplePresets
+    },
+    {
+      id: "sample-scene-template",
+      name: "제작 참고 템플릿 2",
+      createdAt: "2026-04-23T00:00:00.000Z",
+      data: normalizeTheaterData(sampleData),
+      presets: samplePresets
+    }
+  ];
+}
+
+function summarizeTemplate(template: SavedTemplate): SavedTemplateSummary {
+  return {
+    id: template.id,
+    name: template.name,
+    createdAt: template.createdAt,
+    bytes: getJsonByteLength(template)
+  };
+}
+
+function isPublicSampleRoom(roomCode: string) {
+  return normalizeRoomCode(roomCode) === PUBLIC_SAMPLE_ROOM_CODE;
+}
+
+function getJsonByteLength(value: unknown) {
+  return new TextEncoder().encode(JSON.stringify(value ?? null)).length;
+}
+
+function createCharacterPresetLibrary(presets: CharacterPreset[]): CharacterPresetLibrary {
+  return {
+    updatedAt: new Date().toISOString(),
+    presets: normalizeCharacterPresets(presets)
+  };
+}
+
+function getCharacterLibraryBytes(presets: CharacterPreset[]) {
+  return getJsonByteLength(createCharacterPresetLibrary(estimateRemotePresets(presets)));
+}
+
+function getTemplateBytes(data: TheaterData, presets: CharacterPreset[], name = getDefaultTemplateName(data)) {
+  return getJsonByteLength({
+    id: "size-check",
+    name,
+    createdAt: "2000-01-01T00:00:00.000Z",
+    data: normalizeTheaterData(estimateRemoteData(data)),
+    presets: normalizeCharacterPresets(estimateRemotePresets(presets))
+  });
+}
+
+function isDataUrl(src?: string) {
+  return Boolean(src?.startsWith("data:"));
+}
+
+function imageUrlFromKey(imageKey: string) {
+  return `${IMAGES_API_PATH}?key=${encodeURIComponent(imageKey)}`;
+}
+
+function imageKeyFromUrl(src?: string) {
+  if (!src || !src.includes(IMAGES_API_PATH)) return "";
+  try {
+    return new URL(src, window.location.origin).searchParams.get("key") || "";
+  } catch {
+    return "";
+  }
+}
+
+function withoutUndefined<T extends Record<string, unknown>>(value: T): T {
+  return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined)) as T;
+}
+
+function withHydratedImage<T extends { imageData?: string; imageKey?: string }>(value: T): T {
+  if (!value.imageKey) return value;
+  return { ...value, imageData: imageUrlFromKey(value.imageKey) };
+}
+
+function hydrateDataImages(data: TheaterData): TheaterData {
+  return {
+    ...data,
+    blocks: data.blocks.map((block) => {
+      if (!isSceneCard(block)) return block;
+      return {
+        ...block,
+        blocks: block.blocks.map((sceneBlock) => (sceneBlock.type === "sceneHeader" ? withHydratedImage(sceneBlock) : sceneBlock))
+      };
+    })
+  };
+}
+
+function hydratePresetImages(presets: CharacterPreset[]) {
+  return presets.map((preset) => ({
+    ...withHydratedImage(preset),
+    imagePresetGroups: preset.imagePresetGroups?.map((group) => ({
+      ...group,
+      presets: group.presets.map(withHydratedImage)
+    })),
+    imagePresets: preset.imagePresets?.map(withHydratedImage)
+  }));
+}
+
+function stripDataImagesForEstimate<T extends { imageData?: string; imageKey?: string; imageMimeType?: string }>(value: T): T {
+  const existingKey = value.imageKey || imageKeyFromUrl(value.imageData);
+  if (existingKey || isDataUrl(value.imageData)) {
+    return withoutUndefined({ ...value, imageData: undefined, imageKey: existingKey || "pending-image-key", imageMimeType: value.imageMimeType });
+  }
+  return value;
+}
+
+function estimateRemoteData(data: TheaterData): TheaterData {
+  return {
+    ...data,
+    blocks: data.blocks.map((block) => {
+      if (!isSceneCard(block)) return block;
+      return {
+        ...block,
+        blocks: block.blocks.map((sceneBlock) => (sceneBlock.type === "sceneHeader" ? stripDataImagesForEstimate(sceneBlock) : sceneBlock))
+      };
+    })
+  };
+}
+
+function estimateRemotePresets(presets: CharacterPreset[]) {
+  return presets.map((preset) => ({
+    ...stripDataImagesForEstimate(preset),
+    imagePresetGroups: preset.imagePresetGroups?.map((group) => ({
+      ...group,
+      presets: group.presets.map(stripDataImagesForEstimate)
+    })),
+    imagePresets: preset.imagePresets?.map(stripDataImagesForEstimate)
+  }));
+}
+
+function formatBytes(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
+}
+
+function formatActivityType(type: string) {
+  if (type === "create") return "저장";
+  if (type === "update") return "수정";
+  if (type === "trash") return "삭제";
+  if (type === "restore") return "복구";
+  if (type === "revert") return "되돌림";
+  if (type === "saveLibrary") return "프리셋";
+  return "기록";
+}
+
 const baseCss = `
 :root {
   --bg: #0f0e0d;
@@ -356,7 +962,8 @@ const baseCss = `
   --scroll-track: #1b1916;
   --scroll-thumb: rgb(200, 169, 110);
 }
-body.theme-light {
+html.theme-ivoryGold,
+body.theme-ivoryGold {
   --bg: #f6f2ea;
   --surface: #fffaf2;
   --surface-2: #ede5d8;
@@ -367,6 +974,32 @@ body.theme-light {
   --text-faint: #968775;
   --scroll-track: #e8dece;
   --scroll-thumb: rgb(200, 169, 110);
+}
+html.theme-midnightBlue,
+body.theme-midnightBlue {
+  --bg: #0d1320;
+  --surface: #151d2b;
+  --surface-2: #111827;
+  --border: #2c3a52;
+  --accent: #9fb6d8;
+  --text: #d9e4f2;
+  --text-dim: #aebbd0;
+  --text-faint: #6f7f98;
+  --scroll-track: #101828;
+  --scroll-thumb: #8ea9cf;
+}
+html.theme-wineRose,
+body.theme-wineRose {
+  --bg: #1d0f15;
+  --surface: #27151d;
+  --surface-2: #211219;
+  --border: #49303a;
+  --accent: #d6a0a8;
+  --text: #f0dbe0;
+  --text-dim: #c8adb4;
+  --text-faint: #866b73;
+  --scroll-track: #24131a;
+  --scroll-thumb: #c88d98;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html {
@@ -382,7 +1015,7 @@ body {
   font-family: 'Pretendard','Noto Sans KR',sans-serif;
   font-size: 17px;
   line-height: 1.8;
-  max-width: 780px;
+  max-width: ${EXPORT_CONTENT_WIDTH}px;
   margin: 0 auto;
   padding: 40px 20px 80px;
 }
@@ -397,8 +1030,8 @@ body {
 .scene-header { background: var(--surface-2); padding: 10px 16px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--border); }
 .scene-num { font-size: var(--font-scene-number); letter-spacing: 1px; color: var(--accent); text-transform: uppercase; }
 .scene-title { font-size: 15px; font-weight: 500; color: var(--text); }
-.scene-img-placeholder { width: 100%; min-height: 180px; background: linear-gradient(135deg, var(--surface) 0%, var(--surface-2) 100%); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 6px; color: var(--text-faint); font-size: var(--font-scene-image-label); letter-spacing: 1px; padding: 20px; text-align: center; overflow: hidden; }
-.scene-img-placeholder img { max-width: 100%; max-height: 280px; object-fit: contain; display: block; }
+.scene-img-placeholder { width: 100%; min-height: 180px; background: linear-gradient(135deg, var(--surface) 0%, var(--surface-2) 100%); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 6px; color: var(--text-faint); font-size: var(--font-scene-image-label); letter-spacing: 1px; padding: 12px; text-align: center; overflow: hidden; }
+.scene-img-placeholder img { max-width: 100%; max-height: 420px; object-fit: contain; display: block; }
 .scene-desc { padding: 12px 16px; font-size: 15px; color: var(--text-dim); border-bottom: 1px solid var(--border); line-height: 1.7; white-space: pre-wrap; }
 .dialogue-block { padding: 8px 16px; display: flex; flex-direction: column; gap: 2px; }
 .dialogue-row, .narration-row { display: flex; gap: 15px; align-items: flex-start; padding: 16px; border-bottom: 1px solid rgba(255,255,255,0.03); }
@@ -452,14 +1085,126 @@ function normalizeCharacterId(id: string) {
   return CHARACTER_ID_ALIASES[id] ?? id;
 }
 
+function getCharacterImagePresetGroups(character: CharacterPreset | undefined, includeEmpty = false) {
+  const groups = character?.imagePresetGroups ?? [];
+  return includeEmpty ? groups : groups.filter((group) => group.presets.length);
+}
+
+function flattenImagePresetGroups(groups: CharacterImagePresetGroup[] = []) {
+  return groups.flatMap((group) => group.presets);
+}
+
+function getDefaultImagePresetGroups(defaults: CharacterPreset | undefined) {
+  if (defaults?.imagePresetGroups?.length) return defaults.imagePresetGroups;
+  if (defaults?.imagePresets?.length) return [{ id: LEGACY_IMAGE_PRESET_GROUP_ID, name: "프리셋", locked: true, presets: defaults.imagePresets }];
+  return [];
+}
+
+function getIncomingImagePresetGroups(preset: CharacterPreset) {
+  const groups = preset.imagePresetGroups ?? [];
+  if (!preset.imagePresets?.length) return groups;
+  return [
+    ...groups,
+    {
+      id: LEGACY_IMAGE_PRESET_GROUP_ID,
+      name: "개인",
+      presets: preset.imagePresets
+    }
+  ];
+}
+
+function mergeCharacterImagePresetGroups(defaults: CharacterPreset | undefined, preset: CharacterPreset) {
+  const globalGroups = getDefaultImagePresetGroups(defaults);
+  const globalPresets = flattenImagePresetGroups(globalGroups);
+  const globalIds = new Set(globalPresets.map((imagePreset) => imagePreset.id));
+  const hiddenGlobalIds = new Set(preset.hiddenGlobalImagePresetIds ?? []);
+  const incomingGroups = getIncomingImagePresetGroups(preset);
+  const incomingPresetsById = new Map(flattenImagePresetGroups(incomingGroups).map((imagePreset) => [imagePreset.id, imagePreset]));
+  const incomingGroupsById = new Map(incomingGroups.map((group) => [group.id, group]));
+  const usedCustomIds = new Set<string>();
+
+  const mergedGlobalGroups = globalGroups
+    .map((group) => {
+      const incomingGroup = incomingGroupsById.get(group.id);
+      const mergedGlobalPresets = group.presets
+        .filter((imagePreset) => !hiddenGlobalIds.has(imagePreset.id))
+        .map((imagePreset) => ({ ...imagePreset, ...incomingPresetsById.get(imagePreset.id) }));
+      const groupCustomPresets = (incomingGroup?.presets ?? []).filter((imagePreset) => !globalIds.has(imagePreset.id));
+      groupCustomPresets.forEach((imagePreset) => usedCustomIds.add(imagePreset.id));
+      return {
+        ...group,
+        name: incomingGroup?.name ?? group.name,
+        presets: [...mergedGlobalPresets, ...groupCustomPresets]
+      };
+    })
+    .filter((group) => group.presets.length);
+
+  const globalGroupIds = new Set(globalGroups.map((group) => group.id));
+  const customGroups = incomingGroups
+    .filter((group) => !globalGroupIds.has(group.id))
+    .map((group) => ({
+      ...group,
+      locked: false,
+      presets: group.presets.filter((imagePreset) => !globalIds.has(imagePreset.id) && !usedCustomIds.has(imagePreset.id))
+    }))
+    .filter((group) => group.presets.length || group.id !== LEGACY_IMAGE_PRESET_GROUP_ID);
+
+  const mergedGlobalGroupsById = new Map(mergedGlobalGroups.map((group) => [group.id, group]));
+  const customGroupsById = new Map(customGroups.map((group) => [group.id, group]));
+  const orderedIds = incomingGroups
+    .map((group) => group.id)
+    .filter((groupId, index, items) => items.indexOf(groupId) === index)
+    .filter((groupId) => mergedGlobalGroupsById.has(groupId) || customGroupsById.has(groupId));
+  const missingGlobalIds = mergedGlobalGroups.map((group) => group.id).filter((groupId) => !orderedIds.includes(groupId));
+
+  return [...orderedIds, ...missingGlobalIds]
+    .map((groupId) => mergedGlobalGroupsById.get(groupId) ?? customGroupsById.get(groupId))
+    .filter((group): group is CharacterImagePresetGroup => Boolean(group));
+}
+
+function isGlobalImagePreset(characterId: string, imagePresetId: string) {
+  const id = normalizeCharacterId(characterId);
+  const defaults = CHARACTER_PRESETS.find((preset) => preset.id === id);
+  return Boolean(flattenImagePresetGroups(getDefaultImagePresetGroups(defaults)).some((imagePreset) => imagePreset.id === imagePresetId));
+}
+
+function isGlobalImagePresetGroup(characterId: string, groupId: string) {
+  const id = normalizeCharacterId(characterId);
+  const defaults = CHARACTER_PRESETS.find((preset) => preset.id === id);
+  return Boolean(getDefaultImagePresetGroups(defaults).some((group) => group.id === groupId));
+}
+
+function uniqueStrings(values: string[]) {
+  return Array.from(new Set(values.filter(Boolean)));
+}
+
 function normalizeCharacterPresets(presets: CharacterPreset[]) {
   const seen = new Set<string>();
   return presets
-    .map((preset) => ({ ...preset, id: normalizeCharacterId(preset.id) }))
+    .map((preset) => {
+      const id = normalizeCharacterId(preset.id);
+      const defaults = CHARACTER_PRESETS.find((item) => item.id === id);
+      const hiddenGlobalImagePresetIds = uniqueStrings(preset.hiddenGlobalImagePresetIds ?? []);
+      return {
+        ...defaults,
+        ...preset,
+        id,
+        imagePresetGroups: mergeCharacterImagePresetGroups(defaults, { ...preset, id, hiddenGlobalImagePresetIds }),
+        imagePresets: undefined,
+        hiddenGlobalImagePresetIds: hiddenGlobalImagePresetIds.length ? hiddenGlobalImagePresetIds : undefined,
+        markImageData: preset.markImageData ?? defaults?.markImageData,
+        prisonerNumber: preset.prisonerNumber ?? defaults?.prisonerNumber
+      };
+    })
     .filter((preset) => {
       if (seen.has(preset.id)) return false;
       seen.add(preset.id);
       return true;
+    })
+    .sort((a, b) => {
+      const aIndex = CHARACTER_PRESET_ORDER.indexOf(a.id);
+      const bIndex = CHARACTER_PRESET_ORDER.indexOf(b.id);
+      return (aIndex === -1 ? Number.MAX_SAFE_INTEGER : aIndex) - (bIndex === -1 ? Number.MAX_SAFE_INTEGER : bIndex);
     });
 }
 
@@ -479,12 +1224,57 @@ function normalizeTheaterData(data: TheaterData): TheaterData {
   };
 }
 
+function getCharacterImagePreset(character: CharacterPreset | undefined, imagePresetId?: string) {
+  if (!character || !imagePresetId) return undefined;
+  return flattenImagePresetGroups(getCharacterImagePresetGroups(character)).find((preset) => preset.id === imagePresetId);
+}
+
+function getCharacterAvatarImage(character: CharacterPreset | undefined, imagePresetId?: string) {
+  const presetImage = getCharacterImagePreset(character, imagePresetId ?? character?.selectedImagePresetId)?.imageData;
+  return presetImage || character?.imageData || "";
+}
+
 function moveArrayItem<T>(items: T[], index: number, direction: -1 | 1) {
   const target = index + direction;
   if (target < 0 || target >= items.length) return items;
   const next = [...items];
   [next[index], next[target]] = [next[target], next[index]];
   return next;
+}
+
+function moveArrayItemTo<T>(items: T[], fromIndex: number, toIndex: number) {
+  if (fromIndex < 0 || toIndex < 0 || fromIndex >= items.length || toIndex >= items.length || fromIndex === toIndex) return items;
+  const next = [...items];
+  const [item] = next.splice(fromIndex, 1);
+  next.splice(toIndex, 0, item);
+  return next;
+}
+
+type DragPayload = { scope: "page"; id: string } | { scope: "scene"; sceneId: string; id: string };
+
+const DRAG_DATA_TYPE = "application/x-theater-drag";
+
+function writeDragPayload(event: React.DragEvent, payload: DragPayload) {
+  const serialized = JSON.stringify(payload);
+  event.dataTransfer.effectAllowed = "move";
+  event.dataTransfer.setData(DRAG_DATA_TYPE, serialized);
+  event.dataTransfer.setData("text/plain", serialized);
+}
+
+function readDragPayload(event: React.DragEvent): DragPayload | null {
+  const serialized = event.dataTransfer.getData(DRAG_DATA_TYPE) || event.dataTransfer.getData("text/plain");
+  if (!serialized) return null;
+  try {
+    const parsed = JSON.parse(serialized) as DragPayload;
+    if (parsed.scope === "page" || parsed.scope === "scene") return parsed;
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function collectCollapsibleBlockIds(data: TheaterData) {
+  return data.blocks.flatMap((block) => (isSceneCard(block) ? [block.id, ...block.blocks.map((sceneBlock) => sceneBlock.id)] : [block.id]));
 }
 
 function styleToCss(style?: TextStyle) {
@@ -606,8 +1396,9 @@ function renderSceneBlock(block: SceneBlock, presets: CharacterPreset[]) {
     const characterId = normalizeCharacterId(block.characterId);
     const character = presets.find((preset) => preset.id === characterId) ?? presets[0];
     const role = block.role ?? "";
-    const avatar = character.imageData
-      ? `<img class="avatar-img" style="--ring:${character.ring}" src="${character.imageData}" alt="${escapeHtml(character.name)}" />`
+    const avatarImage = getCharacterAvatarImage(character, block.imagePresetId);
+    const avatar = avatarImage
+      ? `<img class="avatar-img" style="--ring:${character.ring}" src="${avatarImage}" alt="${escapeHtml(character.name)}" />`
       : `<div class="avatar" style="--ring:${character.ring}">${escapeHtml(character.name.slice(0, 2))}</div>`;
     return `<div class="dialogue-block"><div class="dialogue-row"><div class="char-portrait">${avatar}<div class="char-name">${escapeHtml(
       character.name
@@ -649,12 +1440,12 @@ function renderPreviewBody(data: TheaterData, presets: CharacterPreset[]) {
   return `${header}${body}`;
 }
 
-function renderPreviewShell(css: string, theme: ThemeMode = "dark") {
-  return `<!doctype html><html lang="ko"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>Theater Export</title><style id="preview-css">${css}</style></head><body class="theme-${theme}"></body></html>`;
+function renderPreviewShell(css: string, theme: ThemeMode = "blackGold") {
+  return `<!doctype html><html lang="ko" class="theme-${theme}"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>Theater Export</title><style id="preview-css">${css}</style></head><body class="theme-${theme}"></body></html>`;
 }
 
-function renderHtml(data: TheaterData, presets: CharacterPreset[], theme: ThemeMode = "dark") {
-  return `<!doctype html><html lang="ko"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>Theater Export</title><style>${renderCss(
+function renderHtml(data: TheaterData, presets: CharacterPreset[], theme: ThemeMode = "blackGold") {
+  return `<!doctype html><html lang="ko" class="theme-${theme}"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>Theater Export</title><style>${renderCss(
     data
   )}</style></head><body class="theme-${theme}">${renderPreviewBody(
     data,
@@ -712,10 +1503,67 @@ function createSceneBlock(type: SceneBlockType, defaultCharacterId: string): Sce
   return { id: makeId(), type, title: "티키타카", textStyle: { ...DEFAULT_TEXT_STYLE, fontSize: 15, color: "#9a9080" }, lines: [{ id: makeId(), speaker: "화자", text: "" }] };
 }
 
-function readImageFile(file: File, callback: (dataUrl: string) => void) {
-  const reader = new FileReader();
-  reader.onload = () => callback(String(reader.result || ""));
-  reader.readAsDataURL(file);
+type ImageOptimizeOptions = {
+  maxDimension: number;
+  targetBytes: number;
+};
+
+function dataUrlByteLength(dataUrl: string) {
+  const commaIndex = dataUrl.indexOf(",");
+  const base64 = commaIndex === -1 ? dataUrl : dataUrl.slice(commaIndex + 1);
+  return Math.ceil((base64.length * 3) / 4);
+}
+
+function loadImageElement(file: File) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("이미지를 읽을 수 없습니다."));
+    };
+    image.src = url;
+  });
+}
+
+async function optimizeImageFile(file: File, options: ImageOptimizeOptions) {
+  const image = await loadImageElement(file);
+  const scale = Math.min(1, options.maxDimension / Math.max(image.naturalWidth || image.width, image.naturalHeight || image.height));
+  const width = Math.max(1, Math.round((image.naturalWidth || image.width) * scale));
+  const height = Math.max(1, Math.round((image.naturalHeight || image.height) * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("이미지 변환을 준비할 수 없습니다.");
+  context.drawImage(image, 0, 0, width, height);
+
+  const webpProbe = canvas.toDataURL("image/webp", 0.82);
+  const mimeType = webpProbe.startsWith("data:image/webp") ? "image/webp" : "image/jpeg";
+  const qualities = [0.86, 0.78, 0.7, 0.62, 0.54, 0.46, 0.38];
+  let best = webpProbe;
+
+  for (const quality of qualities) {
+    const dataUrl = canvas.toDataURL(mimeType, quality);
+    best = dataUrl;
+    if (dataUrlByteLength(dataUrl) <= options.targetBytes) break;
+  }
+
+  return best;
+}
+
+function readImageFile(file: File, callback: (dataUrl: string) => void, options: ImageOptimizeOptions = SCENE_IMAGE_OPTIONS) {
+  optimizeImageFile(file, options)
+    .then(callback)
+    .catch(() => {
+      const reader = new FileReader();
+      reader.onload = () => callback(String(reader.result || ""));
+      reader.readAsDataURL(file);
+    });
 }
 
 function downloadFile(filename: string, content: string, type: string) {
@@ -756,7 +1604,7 @@ async function waitForImages(root: ParentNode) {
   );
 }
 
-const CAPTURE_WIDTH = 780;
+const CAPTURE_WIDTH = EXPORT_CONTENT_WIDTH;
 
 async function createCaptureFrame(html: string) {
   const frame = document.createElement("iframe");
@@ -844,7 +1692,20 @@ async function renderDownloadHtml(data: TheaterData, presets: CharacterPreset[],
   const exportPresets = await Promise.all(
     presets.map(async (preset) => ({
       ...preset,
-      imageData: await assetToDataUrl(preset.imageData)
+      imageData: await assetToDataUrl(preset.imageData || ""),
+      imagePresetGroups: preset.imagePresetGroups
+        ? await Promise.all(
+            preset.imagePresetGroups.map(async (group) => ({
+              ...group,
+              presets: await Promise.all(
+                group.presets.map(async (imagePreset) => ({
+                  ...imagePreset,
+                  imageData: await assetToDataUrl(imagePreset.imageData || "")
+                }))
+              )
+            }))
+          )
+        : undefined
     }))
   );
 
@@ -871,18 +1732,38 @@ async function renderDownloadHtml(data: TheaterData, presets: CharacterPreset[],
 }
 
 const ROOM_STORAGE_KEY = "theater-tool-room-code";
+const PROFILE_GROUP_EXPANDED_STORAGE_KEY = "theater-tool-profile-groups-expanded";
+const PRESET_MANAGER_GROUP_EXPANDED_STORAGE_KEY = "theater-tool-preset-manager-groups-expanded";
 const TEMPLATES_API_PATH = "/.netlify/functions/templates";
-
-function loadSavedRoomCode() {
-  try {
-    return window.localStorage.getItem(ROOM_STORAGE_KEY) || "";
-  } catch {
-    return "";
-  }
-}
+const IMAGES_API_PATH = "/.netlify/functions/images";
 
 function saveRoomCode(roomCode: string) {
   window.localStorage.setItem(ROOM_STORAGE_KEY, roomCode);
+}
+
+function loadInitialRoomCode() {
+  const fallback = PUBLIC_SAMPLE_ROOM_CODE;
+  try {
+    const saved = normalizeRoomCode(window.localStorage.getItem(ROOM_STORAGE_KEY) || "");
+    const nextRoomCode = saved && !validateRoomCode(saved) ? saved : fallback;
+    if (saved !== nextRoomCode) saveRoomCode(nextRoomCode);
+    return nextRoomCode;
+  } catch {
+    return fallback;
+  }
+}
+
+function loadStringSet(key: string) {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(key) || "[]");
+    return new Set<string>(Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : []);
+  } catch {
+    return new Set<string>();
+  }
+}
+
+function saveStringSet(key: string, values: Set<string>) {
+  window.localStorage.setItem(key, JSON.stringify([...values]));
 }
 
 function normalizeRoomCode(roomCode: string) {
@@ -896,8 +1777,14 @@ function validateRoomCode(roomCode: string) {
   return "";
 }
 
-async function requestTemplates(method: "GET" | "POST" | "DELETE", roomCode: string, payload?: Record<string, unknown>) {
-  const url = method === "GET" ? `${TEMPLATES_API_PATH}?roomCode=${encodeURIComponent(roomCode)}` : TEMPLATES_API_PATH;
+async function requestTemplates(
+  method: "GET" | "POST" | "DELETE",
+  roomCode: string,
+  payload?: Record<string, unknown>,
+  query?: Record<string, string>
+) {
+  const params = new URLSearchParams({ roomCode, ...(query ?? {}) });
+  const url = method === "GET" ? `${TEMPLATES_API_PATH}?${params.toString()}` : TEMPLATES_API_PATH;
   const response = await fetch(url, {
     method,
     headers: method === "GET" ? undefined : { "content-type": "application/json" },
@@ -905,7 +1792,106 @@ async function requestTemplates(method: "GET" | "POST" | "DELETE", roomCode: str
   });
   const result = (await response.json()) as TemplatesApiResponse;
   if (!response.ok) throw new Error(result.error || "템플릿 저장소 요청에 실패했습니다.");
-  return Array.isArray(result.templates) ? result.templates : [];
+  return {
+    templates: Array.isArray(result.templates) ? result.templates : [],
+    trashedTemplates: Array.isArray(result.trashedTemplates) ? result.trashedTemplates : [],
+    template: result.template ?? null,
+    versions: Array.isArray(result.versions) ? result.versions : [],
+    characterPresetLibrary: result.characterPresetLibrary ?? null,
+    characterPresetLibraryMeta: result.characterPresetLibraryMeta ?? null,
+    activityLog: Array.isArray(result.activityLog) ? result.activityLog : [],
+    usage: result.usage ?? null
+  } satisfies TemplatesApiPayload;
+}
+
+async function uploadImageData(roomCode: string, imageData: string) {
+  const response = await fetch(IMAGES_API_PATH, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ roomCode, imageData })
+  });
+  const result = (await response.json()) as ImagesApiResponse;
+  if (!response.ok || !result.imageKey) throw new Error(result.error || "이미지 저장에 실패했습니다.");
+  return result;
+}
+
+async function requestImageUsage(roomCode: string) {
+  const params = new URLSearchParams({ roomCode, usage: "1" });
+  const response = await fetch(`${IMAGES_API_PATH}?${params.toString()}`);
+  const result = (await response.json()) as ImagesApiResponse;
+  if (!response.ok) throw new Error(result.error || "이미지 사용량을 불러오지 못했습니다.");
+  return result.usage ?? { imageBytes: 0, imageCount: 0, missingImages: 0 };
+}
+
+function createLimitedImageUploader(roomCode: string) {
+  let activeCount = 0;
+  const queue: Array<() => void> = [];
+
+  const runNext = () => {
+    activeCount -= 1;
+    queue.shift()?.();
+  };
+
+  return (imageData: string) =>
+    new Promise<ImagesApiResponse>((resolve, reject) => {
+      const run = () => {
+        activeCount += 1;
+        uploadImageData(roomCode, imageData).then(resolve, reject).finally(runNext);
+      };
+      if (activeCount < IMAGE_UPLOAD_CONCURRENCY) run();
+      else queue.push(run);
+    });
+}
+
+async function imageFieldsForRemote<T extends { imageData?: string; imageKey?: string; imageMimeType?: string }>(
+  value: T,
+  roomCode: string,
+  upload: (imageData: string) => Promise<ImagesApiResponse> = (imageData) => uploadImageData(roomCode, imageData)
+): Promise<T> {
+  const existingKey = value.imageKey || imageKeyFromUrl(value.imageData);
+  if (isDataUrl(value.imageData)) {
+    const uploaded = await upload(value.imageData || "");
+    return withoutUndefined({ ...value, imageData: undefined, imageKey: uploaded.imageKey, imageMimeType: uploaded.mimeType });
+  }
+  if (existingKey) {
+    return withoutUndefined({ ...value, imageData: undefined, imageKey: existingKey });
+  }
+  return value;
+}
+
+async function preparePresetsForRemote(presets: CharacterPreset[], roomCode: string, upload = createLimitedImageUploader(roomCode)) {
+  return Promise.all(
+    normalizeCharacterPresets(presets).map(async (preset) => ({
+      ...(await imageFieldsForRemote(preset, roomCode, upload)),
+      imagePresetGroups: preset.imagePresetGroups
+        ? await Promise.all(
+            preset.imagePresetGroups.map(async (group) => ({
+              ...group,
+              presets: await Promise.all(group.presets.map((imagePreset) => imageFieldsForRemote(imagePreset, roomCode, upload)))
+            }))
+          )
+        : undefined,
+      imagePresets: undefined
+    }))
+  );
+}
+
+async function prepareDataForRemote(data: TheaterData, roomCode: string, upload = createLimitedImageUploader(roomCode)): Promise<TheaterData> {
+  const normalized = normalizeTheaterData(data);
+  return {
+    ...normalized,
+    blocks: await Promise.all(
+      normalized.blocks.map(async (block) => {
+        if (!isSceneCard(block)) return block;
+        return {
+          ...block,
+          blocks: await Promise.all(
+            block.blocks.map((sceneBlock) => (sceneBlock.type === "sceneHeader" ? imageFieldsForRemote(sceneBlock, roomCode, upload) : sceneBlock))
+          )
+        };
+      })
+    )
+  };
 }
 
 function getDefaultTemplateName(data: TheaterData) {
@@ -1007,11 +1993,158 @@ function RichTextArea({ value, onChange, rows = 3 }: { value: string; onChange: 
 
 function CharacterImageManager({
   presets,
-  setPresets
+  setPresets,
+  activeRoomCode,
+  characterLibraryLoading,
+  characterLibraryMessage,
+  hasCharacterLibrary,
+  characterLibraryUsageBytes,
+  characterLibraryLimitBytes,
+  isPublicRoom,
+  onSaveCharacterLibrary,
+  onLoadCharacterLibrary
 }: {
   presets: CharacterPreset[];
   setPresets: React.Dispatch<React.SetStateAction<CharacterPreset[]>>;
+  activeRoomCode: string;
+  characterLibraryLoading: boolean;
+  characterLibraryMessage: string;
+  hasCharacterLibrary: boolean;
+  characterLibraryUsageBytes: number;
+  characterLibraryLimitBytes: number;
+  isPublicRoom: boolean;
+  onSaveCharacterLibrary: (nextPresets?: CharacterPreset[], silent?: boolean) => void;
+  onLoadCharacterLibrary: () => void;
 }) {
+  const [activeCharacterId, setActiveCharacterId] = useState(presets[0]?.id ?? "");
+  const [expandedImageGroupIds, setExpandedImageGroupIds] = useState<Set<string>>(() => loadStringSet(PRESET_MANAGER_GROUP_EXPANDED_STORAGE_KEY));
+  const activeCharacter = presets.find((preset) => preset.id === activeCharacterId) ?? presets[0];
+  const activeImageGroups = useMemo(() => getCharacterImagePresetGroups(activeCharacter, true), [activeCharacter]);
+  const activeCustomGroupCount = activeCharacter?.imagePresetGroups?.filter((group) => !isGlobalImagePresetGroup(activeCharacter.id, group.id)).length ?? 0;
+  const isImagePresetGroupLimitReached = activeCustomGroupCount >= MAX_IMAGE_PRESET_GROUPS_PER_CHARACTER;
+  const usageRatio = Math.min(100, Math.round((characterLibraryUsageBytes / characterLibraryLimitBytes) * 100));
+
+  useEffect(() => {
+    if (!presets.some((preset) => preset.id === activeCharacterId)) {
+      setActiveCharacterId(presets[0]?.id ?? "");
+    }
+  }, [activeCharacterId, presets]);
+
+  const updateCharacter = (characterId: string, updater: (character: CharacterPreset) => CharacterPreset, persist = false) => {
+    const nextPresets = presets.map((preset) => (preset.id === characterId ? updater(preset) : preset));
+    setPresets(nextPresets);
+    if (persist && activeRoomCode && !isPublicRoom) {
+      onSaveCharacterLibrary(nextPresets, true);
+    }
+  };
+
+  const addImageGroup = () => {
+    if (!activeCharacter) return;
+    if (isPublicRoom) {
+      window.alert("000000 샘플 코드는 읽기 전용이라 이미지 프리셋 그룹을 추가할 수 없습니다.");
+      return;
+    }
+    if (isImagePresetGroupLimitReached) {
+      window.alert(`캐릭터당 개인 프로필 그룹은 최대 ${MAX_IMAGE_PRESET_GROUPS_PER_CHARACTER}개까지 추가할 수 있습니다.`);
+      return;
+    }
+    const name = window.prompt("추가할 프로필 사진 그룹 이름을 입력하세요.", "새 그룹");
+    if (!name?.trim()) return;
+    const groupId = `${activeCharacter.id}-group-${makeId()}`;
+    updateCharacter(activeCharacter.id, (character) => ({
+      ...character,
+      imagePresetGroups: [...(character.imagePresetGroups ?? []), { id: groupId, name: name.trim(), presets: [] }]
+    }));
+    setExpandedImageGroupIds((current) => new Set([...current, groupId]));
+    saveStringSet(PRESET_MANAGER_GROUP_EXPANDED_STORAGE_KEY, new Set([...expandedImageGroupIds, groupId]));
+  };
+
+  const addImagePreset = (groupId: string) => {
+    if (!activeCharacter) return;
+    if (isPublicRoom) {
+      window.alert("000000 샘플 코드는 읽기 전용이라 이미지 프리셋을 추가할 수 없습니다.");
+      return;
+    }
+    const targetGroup = activeImageGroups.find((group) => group.id === groupId);
+    if (!targetGroup) return;
+    if (targetGroup.presets.length >= MAX_IMAGE_PRESETS_PER_GROUP) {
+      window.alert(`프로필 그룹당 이미지는 최대 ${MAX_IMAGE_PRESETS_PER_GROUP}개까지 추가할 수 있습니다.`);
+      return;
+    }
+    const presetId = `${activeCharacter.id}-${makeId()}`;
+    updateCharacter(activeCharacter.id, (character) => ({
+      ...character,
+      imagePresetGroups: (character.imagePresetGroups ?? []).map((group) =>
+        group.id === groupId ? { ...group, presets: [...group.presets, { id: presetId, name: `사진 ${group.presets.length + 1}`, imageData: "" }] } : group
+      )
+    }));
+    setExpandedImageGroupIds((current) => new Set([...current, groupId]));
+  };
+
+  const updateImagePreset = (characterId: string, imagePresetId: string, updater: (preset: CharacterImagePreset) => CharacterImagePreset) => {
+    updateCharacter(characterId, (character) => ({
+      ...character,
+      imagePresetGroups:
+        character.imagePresetGroups?.map((group) => ({
+          ...group,
+          presets: group.presets.map((preset) => (preset.id === imagePresetId ? updater(preset) : preset))
+        })) ?? []
+    }));
+  };
+
+  const deleteImagePreset = (characterId: string, imagePresetId: string) => {
+    updateCharacter(characterId, (character) => ({
+      ...character,
+      selectedImagePresetId: character.selectedImagePresetId === imagePresetId ? undefined : character.selectedImagePresetId,
+      hiddenGlobalImagePresetIds: isGlobalImagePreset(characterId, imagePresetId)
+        ? uniqueStrings([...(character.hiddenGlobalImagePresetIds ?? []), imagePresetId])
+        : character.hiddenGlobalImagePresetIds,
+      imagePresetGroups:
+        character.imagePresetGroups
+          ?.map((group) => ({ ...group, presets: group.presets.filter((preset) => preset.id !== imagePresetId) }))
+          .filter((group) => group.presets.length || !isGlobalImagePresetGroup(characterId, group.id)) ?? []
+    }), true);
+  };
+
+  const deleteImageGroup = (characterId: string, groupId: string) => {
+    updateCharacter(characterId, (character) => {
+      const group = character.imagePresetGroups?.find((item) => item.id === groupId);
+      const hiddenIds = group && isGlobalImagePresetGroup(characterId, groupId) ? group.presets.map((preset) => preset.id) : [];
+      return {
+        ...character,
+        selectedImagePresetId: group?.presets.some((preset) => preset.id === character.selectedImagePresetId) ? undefined : character.selectedImagePresetId,
+        hiddenGlobalImagePresetIds: uniqueStrings([...(character.hiddenGlobalImagePresetIds ?? []), ...hiddenIds]),
+        imagePresetGroups: character.imagePresetGroups?.filter((item) => item.id !== groupId) ?? []
+      };
+    }, true);
+  };
+
+  const moveImageGroup = (characterId: string, groupId: string, direction: -1 | 1) => {
+    updateCharacter(
+      characterId,
+      (character) => {
+        const groups = character.imagePresetGroups ?? [];
+        const index = groups.findIndex((group) => group.id === groupId);
+        if (index === -1) return character;
+        return {
+          ...character,
+          imagePresetGroups: moveArrayItem(groups, index, direction)
+        };
+      },
+      true
+    );
+  };
+
+  const toggleImageGroup = (groupId: string) => {
+    setExpandedImageGroupIds((current) => {
+      const next = new Set(current);
+      if (next.has(groupId)) next.delete(groupId);
+      else next.add(groupId);
+      saveStringSet(PRESET_MANAGER_GROUP_EXPANDED_STORAGE_KEY, next);
+      return next;
+    });
+  };
+
   return (
     <section className="panel">
       <div className="panelTitle">
@@ -1020,14 +2153,34 @@ function CharacterImageManager({
       </div>
       <div className="characterGrid">
         {presets.map((preset) => (
-          <label className="characterChip" key={preset.id}>
+          <button
+            type="button"
+            className={`characterChip${preset.id === activeCharacter?.id ? " active" : ""}`}
+            key={preset.id}
+            onClick={() => setActiveCharacterId(preset.id)}
+          >
             <span className="miniAvatar" style={{ borderColor: preset.ring }}>
               {preset.imageData ? <img key={preset.imageData} src={preset.imageData} alt="" /> : preset.name.slice(0, 2)}
             </span>
             <span>{preset.name}</span>
+          </button>
+        ))}
+      </div>
+      {activeCharacter ? (
+        <div className="characterPresetManager">
+          <div className="characterPresetHeader">
+            <span className="miniAvatar" style={{ borderColor: activeCharacter.ring }}>
+              {activeCharacter.imageData ? <img key={activeCharacter.imageData} src={activeCharacter.imageData} alt="" /> : activeCharacter.name.slice(0, 2)}
+            </span>
+            <strong>{activeCharacter.name}</strong>
+          </div>
+          <label className={`fileButton${isPublicRoom ? " disabled" : ""}`}>
+            <Upload size={15} />
+            기본 프로필 이미지
             <input
               type="file"
               accept="image/*"
+              disabled={isPublicRoom}
               onClick={(event) => {
                 event.currentTarget.value = "";
               }}
@@ -1036,13 +2189,162 @@ function CharacterImageManager({
                 const file = event.target.files?.[0];
                 input.value = "";
                 if (!file) return;
-                readImageFile(file, (imageData) => {
-                  setPresets((current) => current.map((item) => (item.id === preset.id ? { ...item, imageData } : item)));
-                });
+                readImageFile(file, (imageData) => updateCharacter(activeCharacter.id, (character) => ({ ...character, imageData })), PROFILE_IMAGE_OPTIONS);
               }}
             />
           </label>
-        ))}
+          <div className="presetManagerTitle">
+            <span>프로필 사진 그룹</span>
+            <button type="button" onClick={addImageGroup} disabled={isPublicRoom || isImagePresetGroupLimitReached}>
+              <Plus size={14} />
+              그룹 추가
+            </button>
+          </div>
+          <div className="presetCount">
+            개인 그룹 {activeCustomGroupCount} / {MAX_IMAGE_PRESET_GROUPS_PER_CHARACTER}
+          </div>
+          {activeImageGroups.length ? (
+            <div className="profilePresetFolderList">
+              {activeImageGroups.map((group, groupIndex) => {
+                const isExpanded = expandedImageGroupIds.has(group.id);
+                const isGroupFull = group.presets.length >= MAX_IMAGE_PRESETS_PER_GROUP;
+                return (
+                  <section className="profilePresetFolder" key={group.id}>
+                    <div className="profilePresetFolderTop">
+                      <button type="button" className="profilePresetFolderName" onClick={() => toggleImageGroup(group.id)}>
+                        {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                        <span>{group.name}</span>
+                        <small>{group.presets.length}</small>
+                      </button>
+                      <div className="profilePresetOrderActions">
+                        <button
+                          type="button"
+                          className="iconButton"
+                          onClick={() => moveImageGroup(activeCharacter.id, group.id, -1)}
+                          disabled={isPublicRoom || groupIndex === 0}
+                          aria-label="그룹 위로 이동"
+                          title="그룹 위로 이동"
+                        >
+                          <ArrowUp size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          className="iconButton"
+                          onClick={() => moveImageGroup(activeCharacter.id, group.id, 1)}
+                          disabled={isPublicRoom || groupIndex === activeImageGroups.length - 1}
+                          aria-label="그룹 아래로 이동"
+                          title="그룹 아래로 이동"
+                        >
+                          <ArrowDown size={14} />
+                        </button>
+                      </div>
+                    </div>
+                    {isExpanded ? (
+                      <div className="profilePresetFolderBody">
+                        <div className="profilePresetFolderActions">
+                          <button type="button" onClick={() => addImagePreset(group.id)} disabled={isPublicRoom || isGroupFull}>
+                            <Plus size={14} />
+                            <span>사진<br />추가</span>
+                          </button>
+                          <button
+                            type="button"
+                            className="dangerTextButton"
+                            onClick={() => deleteImageGroup(activeCharacter.id, group.id)}
+                            disabled={isPublicRoom}
+                          >
+                            <Trash2 size={14} />
+                            <span>그룹<br />삭제</span>
+                          </button>
+                        </div>
+                        {group.presets.length ? (
+                          <div className="profilePresetPreviewGrid">
+                            {group.presets.map((imagePreset) => (
+                              <div className="profilePresetTileWrap" key={imagePreset.id}>
+                                <label className="profilePresetTile" title={`${group.name} / ${imagePreset.name}`}>
+                                  {imagePreset.imageData ? <img src={imagePreset.imageData} alt="" /> : <Upload size={18} />}
+                                  {imagePreset.imageData ? (
+                                    <span className="imageHoverPreview" aria-hidden="true">
+                                      <img src={imagePreset.imageData} alt="" />
+                                    </span>
+                                  ) : null}
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    disabled={isPublicRoom}
+                                    onClick={(event) => {
+                                      event.currentTarget.value = "";
+                                    }}
+                                    onChange={(event) => {
+                                      const input = event.currentTarget;
+                                      const file = event.target.files?.[0];
+                                      input.value = "";
+                                      if (!file) return;
+                                      readImageFile(
+                                        file,
+                                        (imageData) => updateImagePreset(activeCharacter.id, imagePreset.id, (preset) => ({ ...preset, imageData })),
+                                        PROFILE_IMAGE_OPTIONS
+                                      );
+                                    }}
+                                  />
+                                </label>
+                                <button
+                                  type="button"
+                                  className="profilePresetTileDelete"
+                                  onClick={() => deleteImagePreset(activeCharacter.id, imagePreset.id)}
+                                  disabled={isPublicRoom}
+                                  aria-label="프리셋 삭제"
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="emptyTemplates">사진 없음</div>
+                        )}
+                      </div>
+                    ) : null}
+                  </section>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="emptyTemplates">프로필 그룹 없음</div>
+          )}
+        </div>
+      ) : null}
+      <div className="characterLibraryBox">
+        <div className="presetManagerTitle">
+          <span>개인 캐릭터 프리셋</span>
+        </div>
+        {activeRoomCode ? (
+          <div className="characterLibraryCode">현재 코드: {activeRoomCode}</div>
+        ) : (
+          <div className="emptyTemplates">접속코드를 입력하면 개인 캐릭터 프리셋을 다른 기기에서도 불러올 수 있습니다.</div>
+        )}
+        <div className="usageBox">
+          <div className="usageText">
+            <span>사용량</span>
+            <strong>
+              {formatBytes(characterLibraryUsageBytes)} / {formatBytes(characterLibraryLimitBytes)}
+            </strong>
+          </div>
+          <div className="usageTrack" aria-hidden="true">
+            <span style={{ width: `${usageRatio}%` }} />
+          </div>
+        </div>
+        {isPublicRoom ? <div className="emptyTemplates">000000 샘플 코드는 읽기 전용입니다.</div> : null}
+        <div className="characterLibraryActions">
+          <button type="button" onClick={() => onSaveCharacterLibrary()} disabled={!activeRoomCode || characterLibraryLoading || isPublicRoom}>
+            <Upload size={15} />
+            저장
+          </button>
+          <button type="button" onClick={onLoadCharacterLibrary} disabled={!activeRoomCode || characterLibraryLoading || !hasCharacterLibrary}>
+            <Download size={15} />
+            불러오기
+          </button>
+        </div>
+        {characterLibraryMessage ? <div className="templateMessage">{characterLibraryMessage}</div> : null}
       </div>
     </section>
   );
@@ -1057,6 +2359,18 @@ const SceneBlockEditor = React.memo(function SceneBlockEditor({
   presets: CharacterPreset[];
   onChange: (block: SceneBlock) => void;
 }) {
+  const [isCharacterPickerOpen, setIsCharacterPickerOpen] = useState(false);
+  const [expandedProfileGroupIds, setExpandedProfileGroupIds] = useState<Set<string>>(() => loadStringSet(PROFILE_GROUP_EXPANDED_STORAGE_KEY));
+  const toggleProfileGroup = (groupId: string) => {
+    setExpandedProfileGroupIds((current) => {
+      const next = new Set(current);
+      if (next.has(groupId)) next.delete(groupId);
+      else next.add(groupId);
+      saveStringSet(PROFILE_GROUP_EXPANDED_STORAGE_KEY, next);
+      return next;
+    });
+  };
+
   if (block.type === "sceneHeader") {
     return (
       <div className="fieldGrid">
@@ -1077,7 +2391,7 @@ const SceneBlockEditor = React.memo(function SceneBlockEditor({
               const file = event.target.files?.[0];
               input.value = "";
               if (!file) return;
-              readImageFile(file, (imageData) => onChange({ ...block, imageData }));
+              readImageFile(file, (imageData) => onChange({ ...block, imageData }), SCENE_IMAGE_OPTIONS);
             }}
           />
         </label>
@@ -1093,16 +2407,100 @@ const SceneBlockEditor = React.memo(function SceneBlockEditor({
   }
 
   if (block.type === "character") {
+    const selectedCharacterId = normalizeCharacterId(block.characterId);
+    const selectedPreset = presets.find((preset) => preset.id === selectedCharacterId) ?? presets[0];
+    const selectedImageData = selectedPreset?.markImageData || selectedPreset?.imageData;
+    const profileGroups = getCharacterImagePresetGroups(selectedPreset);
     return (
       <div className="fieldGrid">
-        <select value={normalizeCharacterId(block.characterId)} onChange={(event) => onChange({ ...block, characterId: event.target.value })}>
-          {presets.map((preset) => (
-            <option key={preset.id} value={preset.id}>
-              {preset.name}
-            </option>
-          ))}
-        </select>
-        <input value={block.role} onChange={(event) => onChange({ ...block, role: event.target.value })} placeholder="역할/라벨" />
+        <div className="characterPicker">
+          <button type="button" className="characterPickerButton" onClick={() => setIsCharacterPickerOpen((current) => !current)}>
+            <span className="characterPickerImage" style={{ borderColor: selectedPreset?.ring }}>
+              {selectedImageData ? <img src={selectedImageData} alt="" /> : selectedPreset?.name.slice(0, 2)}
+            </span>
+            <span className="characterPickerText">
+              <span>{selectedPreset?.name ?? "캐릭터 선택"}</span>
+            </span>
+            <ChevronDown size={15} />
+          </button>
+          {isCharacterPickerOpen ? (
+            <div className="characterSelectGrid">
+              {presets.map((preset) => {
+                const imageData = preset.markImageData || preset.imageData;
+                const isSelected = preset.id === selectedCharacterId;
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    className={`characterSelectCard${isSelected ? " active" : ""}`}
+                    onClick={() => {
+                      onChange({ ...block, characterId: preset.id, imagePresetId: undefined });
+                      setIsCharacterPickerOpen(false);
+                    }}
+                    title={preset.prisonerNumber ? `${preset.prisonerNumber} ${preset.name}` : preset.name}
+                  >
+                    <span className="characterSelectImage" style={{ borderColor: preset.ring }}>
+                      {imageData ? <img src={imageData} alt="" /> : preset.name.slice(0, 2)}
+                    </span>
+                    <span className="characterSelectName">
+                      <span>{preset.name}</span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+        </div>
+        {profileGroups.length ? (
+          <div className="profileImageFolders">
+            <button type="button" className={`profileImageTile default${block.imagePresetId ? "" : " active"}`} onClick={() => onChange({ ...block, imagePresetId: undefined })}>
+              <span className="profileImageTilePreview" style={{ borderColor: selectedPreset?.ring }}>
+                {selectedPreset?.imageData ? <img src={selectedPreset.imageData} alt="" /> : selectedPreset?.name.slice(0, 2)}
+              </span>
+              <span>기본</span>
+              {selectedPreset?.imageData ? (
+                <span className="imageHoverPreview" aria-hidden="true">
+                  <img src={selectedPreset.imageData} alt="" />
+                </span>
+              ) : null}
+            </button>
+            {profileGroups.map((group) => {
+              const isExpanded = expandedProfileGroupIds.has(group.id);
+              return (
+                <section className="profileImageFolder" key={group.id}>
+                  <button type="button" className="profileImageFolderHeader" onClick={() => toggleProfileGroup(group.id)}>
+                    {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                    <span>{group.name}</span>
+                    <small>{group.presets.length}</small>
+                  </button>
+                  {isExpanded ? (
+                    <div className="profileImageGrid">
+                      {group.presets.map((preset) => (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          className={`profileImageTile${block.imagePresetId === preset.id ? " active" : ""}`}
+                          onClick={() => onChange({ ...block, imagePresetId: preset.id })}
+                          title={`${group.name} / ${preset.name}`}
+                        >
+                          <span className="profileImageTilePreview" style={{ borderColor: selectedPreset?.ring }}>
+                            {preset.imageData ? <img src={preset.imageData} alt="" /> : preset.name.slice(0, 2)}
+                          </span>
+                          {preset.imageData ? (
+                            <span className="imageHoverPreview" aria-hidden="true">
+                              <img src={preset.imageData} alt="" />
+                            </span>
+                          ) : null}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </section>
+              );
+            })}
+          </div>
+        ) : null}
+        <input value={block.role ?? ""} onChange={(event) => onChange({ ...block, role: event.target.value })} placeholder="역할/라벨" />
         <RichTextArea value={block.text} rows={4} onChange={(text) => onChange({ ...block, text })} />
       </div>
     );
@@ -1169,15 +2567,27 @@ const SceneEditor = React.memo(function SceneEditor({
   presets,
   onChange,
   onBlockChange,
-  showReferences
+  showReferences,
+  collapsedIds,
+  onToggleCollapse
 }: {
   scene: SceneCardData;
   presets: CharacterPreset[];
   onChange: (scene: SceneCardData) => void;
   onBlockChange: (sceneId: string, blockId: string, block: SceneBlock) => void;
   showReferences: boolean;
+  collapsedIds: Set<string>;
+  onToggleCollapse: (id: string) => void;
 }) {
   const defaultCharacterId = presets[0]?.id ?? "etc";
+  const moveSceneBlockByDrop = (event: React.DragEvent, targetIndex: number) => {
+    event.preventDefault();
+    const payload = readDragPayload(event);
+    if (!payload || payload.scope !== "scene" || payload.sceneId !== scene.id) return;
+    const sourceIndex = scene.blocks.findIndex((item) => item.id === payload.id);
+    if (sourceIndex === -1 || sourceIndex === targetIndex) return;
+    onChange({ ...scene, blocks: moveArrayItemTo(scene.blocks, sourceIndex, targetIndex) });
+  };
 
   return (
     <section className="sceneEditor">
@@ -1192,10 +2602,28 @@ const SceneEditor = React.memo(function SceneEditor({
       </div>
       {scene.blocks.map((block, index) =>
         block.type === "reference" && !showReferences ? null : (
-          <div className="blockEditor" key={block.id}>
+          <div
+            className={`blockEditor${collapsedIds.has(block.id) ? " collapsed" : ""}`}
+            key={block.id}
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={(event) => moveSceneBlockByDrop(event, index)}
+          >
             <div className="blockHeader">
-              <strong>{SCENE_BLOCK_LABELS[block.type]}</strong>
+              <strong>
+                <span
+                  className="dragHandle"
+                  draggable
+                  title="드래그로 이동"
+                  onDragStart={(event) => writeDragPayload(event, { scope: "scene", sceneId: scene.id, id: block.id })}
+                >
+                  <GripVertical size={15} />
+                </span>
+                {SCENE_BLOCK_LABELS[block.type]}
+              </strong>
               <div>
+                <button type="button" className="iconButton" onClick={() => onToggleCollapse(block.id)} title={collapsedIds.has(block.id) ? "펼치기" : "접기"}>
+                  {collapsedIds.has(block.id) ? <ChevronDown size={15} /> : <ChevronUp size={15} />}
+                </button>
                 <button type="button" className="iconButton" onClick={() => onChange({ ...scene, blocks: moveArrayItem(scene.blocks, index, -1) })}>
                   <ArrowUp size={15} />
                 </button>
@@ -1207,60 +2635,152 @@ const SceneEditor = React.memo(function SceneEditor({
                 </button>
               </div>
             </div>
-            <SceneBlockEditor
-              block={block}
-              presets={presets}
-              onChange={(nextBlock) => onBlockChange(scene.id, block.id, nextBlock)}
-            />
+            {collapsedIds.has(block.id) ? null : (
+              <SceneBlockEditor
+                block={block}
+                presets={presets}
+                onChange={(nextBlock) => onBlockChange(scene.id, block.id, nextBlock)}
+              />
+            )}
           </div>
         )
       )}
     </section>
   );
-}, (prev, next) => prev.scene === next.scene && prev.presets === next.presets && prev.showReferences === next.showReferences);
+}, (prev, next) =>
+  prev.scene === next.scene &&
+  prev.presets === next.presets &&
+  prev.showReferences === next.showReferences &&
+  prev.collapsedIds === next.collapsedIds
+);
 
 export default function TheaterToolBuilder() {
   const [data, setData] = useState<TheaterData>(() => normalizeTheaterData(defaultTemplate as TheaterData));
   const [history, setHistory] = useState<TheaterData[]>([]);
   const [future, setFuture] = useState<TheaterData[]>([]);
   const [presets, setPresets] = useState<CharacterPreset[]>(() => normalizeCharacterPresets(CHARACTER_PRESETS));
-  const [roomInput, setRoomInput] = useState(() => loadSavedRoomCode());
-  const [activeRoomCode, setActiveRoomCode] = useState(() => loadSavedRoomCode());
-  const [templates, setTemplates] = useState<SavedTemplate[]>([]);
+  const [roomInput, setRoomInput] = useState(() => loadInitialRoomCode());
+  const [activeRoomCode, setActiveRoomCode] = useState(() => loadInitialRoomCode());
+  const [templates, setTemplates] = useState<SavedTemplateSummary[]>([]);
+  const [trashedTemplates, setTrashedTemplates] = useState<SavedTemplateSummary[]>([]);
+  const [activityLog, setActivityLog] = useState<ActivityLogEntry[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [templatesMessage, setTemplatesMessage] = useState("");
+  const [characterPresetLibraryMeta, setCharacterPresetLibraryMeta] = useState<CharacterPresetLibraryMeta | null>(null);
+  const [roomStorageUsage, setRoomStorageUsage] = useState<RoomStorageUsage | null>(null);
+  const [imageStorageUsage, setImageStorageUsage] = useState<ImageStorageUsage | null>(null);
+  const [characterLibraryLoading, setCharacterLibraryLoading] = useState(false);
+  const [characterLibraryMessage, setCharacterLibraryMessage] = useState("");
   const [isCapturing, setIsCapturing] = useState(false);
   const [editorPercent, setEditorPercent] = useState(52);
   const [isResizing, setIsResizing] = useState(false);
-  const [theme, setTheme] = useState<ThemeMode>("dark");
+  const [theme, setTheme] = useState<ThemeMode>("blackGold");
   const [showReferences, setShowReferences] = useState(true);
+  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(() => new Set());
   const importRef = useRef<HTMLInputElement>(null);
   const splitRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLIFrameElement>(null);
   const previewScrollRef = useRef({ x: 0, y: 0 });
   const [previewBody, setPreviewBody] = useState(() => renderPreviewBody(data, presets));
   const [previewCss, setPreviewCss] = useState(() => renderCss(data));
+  const isActivePublicRoom = isPublicSampleRoom(activeRoomCode);
+  const characterLibraryUsageBytes = useMemo(() => getCharacterLibraryBytes(presets), [presets]);
+  const characterLibraryLimitBytes = roomStorageUsage?.characterLibraryLimitBytes ?? CHARACTER_LIBRARY_LIMIT_BYTES;
+  const currentTemplateBytes = useMemo(() => getTemplateBytes(data, presets), [data, presets]);
+  const currentTemplateLimitBytes = roomStorageUsage?.maxTemplateBytes || TEMPLATE_LIMIT_BYTES;
+  const currentTemplateRatio = Math.min(100, Math.round((currentTemplateBytes / currentTemplateLimitBytes) * 100));
+  const imageStorageLimitBytes = imageStorageUsage?.imageLimitBytes ?? ROOM_IMAGE_LIMIT_BYTES;
+  const imageStorageRatio = imageStorageUsage ? Math.min(100, Math.round((imageStorageUsage.imageBytes / imageStorageLimitBytes) * 100)) : 0;
+  const isImageStorageTooLarge = Boolean(imageStorageUsage && imageStorageUsage.imageBytes > imageStorageLimitBytes);
+  const isCurrentTemplateTooLarge = currentTemplateBytes > currentTemplateLimitBytes;
+  const toggleCollapsed = (id: string) => {
+    setCollapsedIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const collapseAllBlocks = () => setCollapsedIds(new Set(collectCollapsibleBlockIds(data)));
+  const expandAllBlocks = () => setCollapsedIds(new Set());
+  const movePageBlockByDrop = (event: React.DragEvent, targetIndex: number) => {
+    event.preventDefault();
+    const payload = readDragPayload(event);
+    if (!payload || payload.scope !== "page") return;
+    commitData((current) => {
+      const sourceIndex = current.blocks.findIndex((block) => block.id === payload.id);
+      if (sourceIndex === -1 || sourceIndex === targetIndex) return current;
+      return { ...current, blocks: moveArrayItemTo(current.blocks, sourceIndex, targetIndex) };
+    });
+  };
+  const refreshImageStorageUsage = async (roomCode: string) => {
+    try {
+      setImageStorageUsage(await requestImageUsage(roomCode));
+    } catch {
+      setImageStorageUsage(null);
+    }
+  };
 
   useEffect(() => {
     const roomCode = normalizeRoomCode(activeRoomCode);
     if (!roomCode) {
       setTemplates([]);
+      setTrashedTemplates([]);
+      setActivityLog([]);
       setTemplatesMessage("");
+      setCharacterPresetLibraryMeta(null);
+      setRoomStorageUsage(null);
+      setImageStorageUsage(null);
+      setCharacterLibraryMessage("");
+      return;
+    }
+
+    if (isPublicSampleRoom(roomCode)) {
+      const sampleTemplates = createPublicSampleTemplates();
+      const sampleLibrary = createCharacterPresetLibrary(CHARACTER_PRESETS);
+      setTemplates(sampleTemplates.map(summarizeTemplate));
+      setTrashedTemplates([]);
+      setActivityLog([]);
+      setTemplatesMessage("000000은 읽기 전용 샘플 코드입니다.");
+      setCharacterPresetLibraryMeta({ updatedAt: sampleLibrary.updatedAt, bytes: getJsonByteLength(sampleLibrary) });
+      setRoomStorageUsage({
+        characterLibraryBytes: getJsonByteLength(sampleLibrary),
+        characterLibraryLimitBytes: CHARACTER_LIBRARY_LIMIT_BYTES,
+        templatesBytes: getJsonByteLength(sampleTemplates),
+        templatesCount: sampleTemplates.length,
+        trashedTemplatesCount: 0,
+        maxTemplates: 2,
+        maxTemplateBytes: TEMPLATE_LIMIT_BYTES
+      });
+      setImageStorageUsage({ imageBytes: 0, imageCount: 0, missingImages: 0, imageLimitBytes: ROOM_IMAGE_LIMIT_BYTES });
+      setCharacterLibraryMessage("공식 샘플 프리셋을 불러올 수 있습니다.");
       return;
     }
 
     let cancelled = false;
     setTemplatesLoading(true);
     setTemplatesMessage("템플릿을 불러오는 중입니다.");
-    requestTemplates("GET", roomCode)
-      .then((nextTemplates) => {
+    Promise.all([requestTemplates("GET", roomCode), requestImageUsage(roomCode)])
+      .then(([{ templates: nextTemplates, trashedTemplates: nextTrashedTemplates, activityLog: nextActivityLog, characterPresetLibraryMeta: nextLibraryMeta, usage }, nextImageUsage]) => {
         if (cancelled) return;
         setTemplates(nextTemplates);
+        setTrashedTemplates(nextTrashedTemplates);
+        setActivityLog(nextActivityLog);
+        setCharacterPresetLibraryMeta(nextLibraryMeta);
+        setRoomStorageUsage(usage);
+        setImageStorageUsage(nextImageUsage);
+        setCharacterLibraryMessage("");
         setTemplatesMessage(nextTemplates.length ? "" : "이 접속코드에는 아직 저장된 템플릿이 없습니다.");
       })
       .catch((error) => {
         if (cancelled) return;
         setTemplates([]);
+        setTrashedTemplates([]);
+        setActivityLog([]);
+        setCharacterPresetLibraryMeta(null);
+        setRoomStorageUsage(null);
+        setImageStorageUsage(null);
+        setCharacterLibraryMessage("");
         setTemplatesMessage(error instanceof Error ? error.message : "템플릿을 불러오지 못했습니다.");
       })
       .finally(() => {
@@ -1382,6 +2902,7 @@ export default function TheaterToolBuilder() {
     if (styleElement) styleElement.textContent = previewCss;
 
     if (doc.body) {
+      doc.documentElement.className = `theme-${theme}`;
       doc.body.className = `theme-${theme}`;
       doc.body.innerHTML = previewBody;
     }
@@ -1473,7 +2994,12 @@ export default function TheaterToolBuilder() {
     setRoomInput("");
     setActiveRoomCode("");
     setTemplates([]);
+    setTrashedTemplates([]);
+    setActivityLog([]);
     setTemplatesMessage("");
+    setCharacterPresetLibraryMeta(null);
+    setRoomStorageUsage(null);
+    setCharacterLibraryMessage("");
   };
 
   const saveCurrentTemplate = async () => {
@@ -1481,6 +3007,14 @@ export default function TheaterToolBuilder() {
     const error = validateRoomCode(roomCode);
     if (error) {
       setTemplatesMessage(error);
+      return;
+    }
+    if (isPublicSampleRoom(roomCode)) {
+      setTemplatesMessage("000000 샘플 코드는 읽기 전용이라 저장할 수 없습니다. 개인 코드를 만들어 저장하세요.");
+      return;
+    }
+    if (isCurrentTemplateTooLarge) {
+      setTemplatesMessage(`현재 회차가 ${formatBytes(currentTemplateLimitBytes)}를 넘어서 저장할 수 없습니다. 이미지나 프리셋을 줄여주세요.`);
       return;
     }
     const name = window.prompt("저장할 템플릿 이름을 입력하세요.", getDefaultTemplateName(data));
@@ -1492,11 +3026,21 @@ export default function TheaterToolBuilder() {
       data: normalizeTheaterData(data),
       presets: normalizeCharacterPresets(presets)
     };
+    const nextTemplateBytes = getJsonByteLength(nextTemplate);
+    if (nextTemplateBytes > currentTemplateLimitBytes) {
+      setTemplatesMessage(`현재 회차가 ${formatBytes(currentTemplateLimitBytes)}를 넘어서 저장할 수 없습니다. 이미지나 프리셋을 줄여주세요.`);
+      return;
+    }
     setTemplatesLoading(true);
     setTemplatesMessage("템플릿을 저장하는 중입니다.");
     try {
-      const nextTemplates = await requestTemplates("POST", roomCode, { template: nextTemplate });
+      const { templates: nextTemplates, trashedTemplates: nextTrashedTemplates, activityLog: nextActivityLog, characterPresetLibraryMeta: nextLibraryMeta, usage } = await requestTemplates("POST", roomCode, { template: nextTemplate });
       setTemplates(nextTemplates);
+      setTrashedTemplates(nextTrashedTemplates);
+      setActivityLog(nextActivityLog);
+      setCharacterPresetLibraryMeta(nextLibraryMeta);
+      setRoomStorageUsage(usage);
+      await refreshImageStorageUsage(roomCode);
       setTemplatesMessage("저장했습니다.");
     } catch (saveError) {
       setTemplatesMessage(saveError instanceof Error ? saveError.message : "템플릿 저장에 실패했습니다.");
@@ -1505,24 +3049,279 @@ export default function TheaterToolBuilder() {
     }
   };
 
-  const loadTemplate = (template: SavedTemplate) => {
-    commitData(normalizeTheaterData(template.data));
-    setPresets(normalizeCharacterPresets(template.presets));
+  const saveCurrentTemplateWithImages = async () => {
+    const roomCode = normalizeRoomCode(activeRoomCode);
+    const error = validateRoomCode(roomCode);
+    if (error) {
+      setTemplatesMessage(error);
+      return;
+    }
+    if (isPublicSampleRoom(roomCode)) {
+      setTemplatesMessage("000000 샘플 코드는 읽기 전용이라 저장할 수 없습니다. 개인 코드를 만들어 저장하세요.");
+      return;
+    }
+    if (isCurrentTemplateTooLarge) {
+      setTemplatesMessage(`현재 회차가 ${formatBytes(currentTemplateLimitBytes)}를 넘어서 저장할 수 없습니다. 이미지나 프리셋을 줄여주세요.`);
+      return;
+    }
+
+    const name = window.prompt("저장할 템플릿 이름을 입력하세요.", getDefaultTemplateName(data));
+    if (!name?.trim()) return;
+
+    setTemplatesLoading(true);
+    setTemplatesMessage("이미지를 정리하고 템플릿을 저장하는 중입니다.");
+    try {
+      const upload = createLimitedImageUploader(roomCode);
+      const [remoteData, remotePresets] = await Promise.all([prepareDataForRemote(data, roomCode, upload), preparePresetsForRemote(presets, roomCode, upload)]);
+      const nextTemplate: SavedTemplate = {
+        id: makeId(),
+        name: name.trim(),
+        createdAt: new Date().toISOString(),
+        data: remoteData,
+        presets: remotePresets
+      };
+      const nextTemplateBytes = getJsonByteLength(nextTemplate);
+      if (nextTemplateBytes > currentTemplateLimitBytes) {
+        setTemplatesMessage(`현재 회차가 ${formatBytes(currentTemplateLimitBytes)}를 넘어서 저장할 수 없습니다. 이미지나 프리셋을 줄여주세요.`);
+        return;
+      }
+      const { templates: nextTemplates, trashedTemplates: nextTrashedTemplates, activityLog: nextActivityLog, characterPresetLibraryMeta: nextLibraryMeta, usage } = await requestTemplates("POST", roomCode, { template: nextTemplate });
+      setData(normalizeTheaterData(hydrateDataImages(remoteData)));
+      setPresets(normalizeCharacterPresets(hydratePresetImages(remotePresets)));
+      setTemplates(nextTemplates);
+      setTrashedTemplates(nextTrashedTemplates);
+      setActivityLog(nextActivityLog);
+      setCharacterPresetLibraryMeta(nextLibraryMeta);
+      setRoomStorageUsage(usage);
+      await refreshImageStorageUsage(roomCode);
+      setTemplatesMessage("저장했습니다.");
+    } catch (saveError) {
+      setTemplatesMessage(saveError instanceof Error ? saveError.message : "템플릿 저장에 실패했습니다.");
+    } finally {
+      setTemplatesLoading(false);
+    }
+  };
+
+  const loadTemplate = async (template: SavedTemplateSummary) => {
+    const roomCode = normalizeRoomCode(activeRoomCode);
+    if (isPublicSampleRoom(roomCode)) {
+      const sampleTemplate = createPublicSampleTemplates().find((item) => item.id === template.id);
+      if (!sampleTemplate) return;
+      commitData(normalizeTheaterData(sampleTemplate.data));
+      setPresets(normalizeCharacterPresets(sampleTemplate.presets));
+      return;
+    }
+
+    setTemplatesLoading(true);
+    setTemplatesMessage("템플릿을 불러오는 중입니다.");
+    try {
+      const { template: loadedTemplate } = await requestTemplates("GET", roomCode, undefined, { templateId: template.id });
+      if (!loadedTemplate) {
+        setTemplatesMessage("템플릿을 찾을 수 없습니다.");
+        return;
+      }
+      commitData(normalizeTheaterData(hydrateDataImages(loadedTemplate.data)));
+      setPresets(normalizeCharacterPresets(hydratePresetImages(loadedTemplate.presets)));
+      setTemplatesMessage("");
+    } catch (loadError) {
+      setTemplatesMessage(loadError instanceof Error ? loadError.message : "템플릿 불러오기에 실패했습니다.");
+    } finally {
+      setTemplatesLoading(false);
+    }
   };
 
   const deleteTemplate = async (templateId: string) => {
     if (!window.confirm("이 템플릿을 삭제할까요?")) return;
     const roomCode = normalizeRoomCode(activeRoomCode);
+    if (isPublicSampleRoom(roomCode)) {
+      setTemplatesMessage("000000 샘플 코드는 읽기 전용이라 삭제할 수 없습니다.");
+      return;
+    }
     setTemplatesLoading(true);
     setTemplatesMessage("템플릿을 삭제하는 중입니다.");
     try {
-      const nextTemplates = await requestTemplates("DELETE", roomCode, { templateId });
+      const { templates: nextTemplates, trashedTemplates: nextTrashedTemplates, activityLog: nextActivityLog, characterPresetLibraryMeta: nextLibraryMeta, usage } = await requestTemplates("DELETE", roomCode, { templateId });
       setTemplates(nextTemplates);
+      setTrashedTemplates(nextTrashedTemplates);
+      setActivityLog(nextActivityLog);
+      setCharacterPresetLibraryMeta(nextLibraryMeta);
+      setRoomStorageUsage(usage);
+      await refreshImageStorageUsage(roomCode);
       setTemplatesMessage(nextTemplates.length ? "삭제했습니다." : "이 접속코드에는 아직 저장된 템플릿이 없습니다.");
     } catch (deleteError) {
       setTemplatesMessage(deleteError instanceof Error ? deleteError.message : "템플릿 삭제에 실패했습니다.");
     } finally {
       setTemplatesLoading(false);
+    }
+  };
+
+  const restoreTemplate = async (templateId: string) => {
+    const roomCode = normalizeRoomCode(activeRoomCode);
+    if (isPublicSampleRoom(roomCode)) {
+      setTemplatesMessage("000000 샘플 코드는 읽기 전용이라 복구할 수 없습니다.");
+      return;
+    }
+    setTemplatesLoading(true);
+    setTemplatesMessage("템플릿을 복구하는 중입니다.");
+    try {
+      const { templates: nextTemplates, trashedTemplates: nextTrashedTemplates, activityLog: nextActivityLog, characterPresetLibraryMeta: nextLibraryMeta, usage } = await requestTemplates("POST", roomCode, { restoreTemplateId: templateId });
+      setTemplates(nextTemplates);
+      setTrashedTemplates(nextTrashedTemplates);
+      setActivityLog(nextActivityLog);
+      setCharacterPresetLibraryMeta(nextLibraryMeta);
+      setRoomStorageUsage(usage);
+      await refreshImageStorageUsage(roomCode);
+      setTemplatesMessage("복구했습니다.");
+    } catch (restoreError) {
+      setTemplatesMessage(restoreError instanceof Error ? restoreError.message : "템플릿 복구에 실패했습니다.");
+    } finally {
+      setTemplatesLoading(false);
+    }
+  };
+
+  const restoreLatestTemplateVersion = async (templateId: string) => {
+    if (!window.confirm("이 템플릿을 직전 버전으로 되돌릴까요?")) return;
+    const roomCode = normalizeRoomCode(activeRoomCode);
+    if (isPublicSampleRoom(roomCode)) {
+      setTemplatesMessage("000000 샘플 코드는 읽기 전용이라 되돌릴 수 없습니다.");
+      return;
+    }
+    setTemplatesLoading(true);
+    setTemplatesMessage("이전 버전으로 되돌리는 중입니다.");
+    try {
+      const { templates: nextTemplates, trashedTemplates: nextTrashedTemplates, activityLog: nextActivityLog, characterPresetLibraryMeta: nextLibraryMeta, usage } = await requestTemplates("POST", roomCode, { restoreVersionTemplateId: templateId });
+      setTemplates(nextTemplates);
+      setTrashedTemplates(nextTrashedTemplates);
+      setActivityLog(nextActivityLog);
+      setCharacterPresetLibraryMeta(nextLibraryMeta);
+      setRoomStorageUsage(usage);
+      await refreshImageStorageUsage(roomCode);
+      setTemplatesMessage("이전 버전으로 되돌렸습니다.");
+    } catch (restoreError) {
+      setTemplatesMessage(restoreError instanceof Error ? restoreError.message : "이전 버전 복원에 실패했습니다.");
+    } finally {
+      setTemplatesLoading(false);
+    }
+  };
+
+  const saveCharacterPresetLibrary = async () => {
+    const roomCode = normalizeRoomCode(activeRoomCode);
+    const error = validateRoomCode(roomCode);
+    if (error) {
+      setCharacterLibraryMessage(error);
+      return;
+    }
+    if (isPublicSampleRoom(roomCode)) {
+      setCharacterLibraryMessage("000000 샘플 코드는 읽기 전용이라 캐릭터 프리셋을 저장할 수 없습니다.");
+      return;
+    }
+
+    const nextLibrary = createCharacterPresetLibrary(presets);
+    const nextLibraryBytes = getJsonByteLength(nextLibrary);
+    if (nextLibraryBytes > CHARACTER_LIBRARY_LIMIT_BYTES) {
+      setCharacterLibraryMessage(`캐릭터 프리셋 사용량이 ${formatBytes(CHARACTER_LIBRARY_LIMIT_BYTES)}를 넘었습니다. 이미지를 줄이거나 프리셋을 삭제하세요.`);
+      return;
+    }
+
+    setCharacterLibraryLoading(true);
+    setCharacterLibraryMessage("캐릭터 프리셋을 저장하는 중입니다.");
+    try {
+      const { templates: nextTemplates, trashedTemplates: nextTrashedTemplates, activityLog: nextActivityLog, characterPresetLibraryMeta: savedLibraryMeta, usage } = await requestTemplates("POST", roomCode, {
+        characterPresetLibrary: nextLibrary
+      });
+      setTemplates(nextTemplates);
+      setTrashedTemplates(nextTrashedTemplates);
+      setActivityLog(nextActivityLog);
+      setCharacterPresetLibraryMeta(savedLibraryMeta ?? { updatedAt: nextLibrary.updatedAt, bytes: getJsonByteLength(nextLibrary) });
+      setRoomStorageUsage(usage);
+      await refreshImageStorageUsage(roomCode);
+      setCharacterLibraryMessage("캐릭터 프리셋을 저장했습니다.");
+    } catch (saveError) {
+      setCharacterLibraryMessage(saveError instanceof Error ? saveError.message : "캐릭터 프리셋 저장에 실패했습니다.");
+    } finally {
+      setCharacterLibraryLoading(false);
+    }
+  };
+
+  const saveCharacterPresetLibraryWithImages = async (sourcePresets: CharacterPreset[] = presets, silent = false) => {
+    const roomCode = normalizeRoomCode(activeRoomCode);
+    const error = validateRoomCode(roomCode);
+    if (error) {
+      setCharacterLibraryMessage(error);
+      return;
+    }
+    if (isPublicSampleRoom(roomCode)) {
+      setCharacterLibraryMessage("000000 샘플 코드는 읽기 전용이라 캐릭터 프리셋을 저장할 수 없습니다.");
+      return;
+    }
+
+    setCharacterLibraryLoading(true);
+    setCharacterLibraryMessage(silent ? "프리셋 변경을 저장하는 중입니다." : "이미지를 정리하고 캐릭터 프리셋을 저장하는 중입니다.");
+    try {
+      const upload = createLimitedImageUploader(roomCode);
+      const remotePresets = await preparePresetsForRemote(sourcePresets, roomCode, upload);
+      const nextLibrary = createCharacterPresetLibrary(remotePresets);
+      const nextLibraryBytes = getJsonByteLength(nextLibrary);
+      if (nextLibraryBytes > CHARACTER_LIBRARY_LIMIT_BYTES) {
+        setCharacterLibraryMessage(`캐릭터 프리셋 사용량이 ${formatBytes(CHARACTER_LIBRARY_LIMIT_BYTES)}를 넘었습니다. 이미지를 줄이거나 프리셋을 삭제하세요.`);
+        return;
+      }
+      const { templates: nextTemplates, trashedTemplates: nextTrashedTemplates, activityLog: nextActivityLog, characterPresetLibraryMeta: savedLibraryMeta, usage } = await requestTemplates("POST", roomCode, {
+        characterPresetLibrary: nextLibrary
+      });
+      setTemplates(nextTemplates);
+      setTrashedTemplates(nextTrashedTemplates);
+      setActivityLog(nextActivityLog);
+      setCharacterPresetLibraryMeta(savedLibraryMeta ?? { updatedAt: nextLibrary.updatedAt, bytes: getJsonByteLength(nextLibrary) });
+      setRoomStorageUsage(usage);
+      await refreshImageStorageUsage(roomCode);
+      setCharacterLibraryMessage(silent ? "프리셋 변경을 저장했습니다." : "캐릭터 프리셋을 저장했습니다.");
+    } catch (saveError) {
+      setCharacterLibraryMessage(saveError instanceof Error ? saveError.message : "캐릭터 프리셋 저장에 실패했습니다.");
+    } finally {
+      setCharacterLibraryLoading(false);
+    }
+  };
+
+  const loadCharacterPresetLibrary = async () => {
+    if (!window.confirm("저장된 캐릭터 프리셋으로 현재 캐릭터 설정을 바꿀까요?")) return;
+
+    const roomCode = normalizeRoomCode(activeRoomCode);
+    const error = validateRoomCode(roomCode);
+    if (error) {
+      setCharacterLibraryMessage(error);
+      return;
+    }
+    if (isPublicSampleRoom(roomCode)) {
+      const sampleLibrary = createCharacterPresetLibrary(CHARACTER_PRESETS);
+      setCharacterPresetLibraryMeta({ updatedAt: sampleLibrary.updatedAt, bytes: getJsonByteLength(sampleLibrary) });
+      setPresets(normalizeCharacterPresets(sampleLibrary.presets));
+      setCharacterLibraryMessage("공식 샘플 프리셋을 불러왔습니다.");
+      return;
+    }
+
+    setCharacterLibraryLoading(true);
+    setCharacterLibraryMessage("캐릭터 프리셋을 불러오는 중입니다.");
+    try {
+      const { templates: nextTemplates, trashedTemplates: nextTrashedTemplates, activityLog: nextActivityLog, characterPresetLibrary: savedLibrary, characterPresetLibraryMeta: savedLibraryMeta, usage } = await requestTemplates("GET", roomCode, undefined, {
+        library: "1"
+      });
+      setTemplates(nextTemplates);
+      setTrashedTemplates(nextTrashedTemplates);
+      setActivityLog(nextActivityLog);
+      setCharacterPresetLibraryMeta(savedLibraryMeta);
+      setRoomStorageUsage(usage);
+      await refreshImageStorageUsage(roomCode);
+      if (!savedLibrary) {
+        setCharacterLibraryMessage("이 접속코드에는 아직 저장된 캐릭터 프리셋이 없습니다.");
+        return;
+      }
+      setPresets(normalizeCharacterPresets(hydratePresetImages(savedLibrary.presets)));
+      setCharacterLibraryMessage("캐릭터 프리셋을 불러왔습니다.");
+    } catch (loadError) {
+      setCharacterLibraryMessage(loadError instanceof Error ? loadError.message : "캐릭터 프리셋 불러오기에 실패했습니다.");
+    } finally {
+      setCharacterLibraryLoading(false);
     }
   };
 
@@ -1532,8 +3331,8 @@ export default function TheaterToolBuilder() {
     const reader = new FileReader();
     reader.onload = () => {
       const parsed = JSON.parse(String(reader.result || "{}")) as TheaterSaveFile;
-      if (parsed.data?.blocks) commitData(normalizeTheaterData(parsed.data));
-      if (parsed.presets) setPresets(normalizeCharacterPresets(parsed.presets));
+      if (parsed.data?.blocks) commitData(normalizeTheaterData(hydrateDataImages(parsed.data)));
+      if (parsed.presets) setPresets(normalizeCharacterPresets(hydratePresetImages(parsed.presets)));
     };
     reader.readAsText(file);
   };
@@ -1578,22 +3377,41 @@ export default function TheaterToolBuilder() {
             <Redo2 size={16} />
             다시 실행
           </button>
-          <button type="button" onClick={() => setTheme((current) => (current === "dark" ? "light" : "dark"))}>
-            <Palette size={16} />
-            {theme === "dark" ? "화이트 모드" : "다크 모드"}
+          <button type="button" onClick={collapseAllBlocks}>
+            <ChevronUp size={16} />
+            전부 접기
           </button>
+          <button type="button" onClick={expandAllBlocks} disabled={collapsedIds.size === 0}>
+            <ChevronDown size={16} />
+            전부 펼치기
+          </button>
+          <div className="themePicker" aria-label="테마 선택">
+            {THEME_OPTIONS.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                className={`themeButton${theme === option.id ? " active" : ""}`}
+                onClick={() => setTheme(option.id)}
+                title={option.name}
+                aria-label={option.name}
+                style={{ "--theme-a": option.colors[0], "--theme-b": option.colors[1] } as React.CSSProperties}
+              >
+                <span className="themeSwatch" />
+              </button>
+            ))}
+          </div>
           <button type="button" onClick={() => setShowReferences((current) => !current)}>
             <Eye size={16} />
             {showReferences ? "참고 데이터 숨기기" : "참고 데이터 보이기"}
           </button>
           <button type="button" onClick={() => importRef.current?.click()}>
             <Upload size={16} />
-            JSON 가져오기
+            불러오기
           </button>
           <input ref={importRef} className="hiddenInput" type="file" accept="application/json" onChange={importJson} />
           <button type="button" onClick={() => downloadFile("theater-data.json", JSON.stringify(createSaveFile(data, presets), null, 2), "application/json")}>
             <FileJson size={16} />
-            JSON 저장
+            저장
           </button>
           <button
             type="button"
@@ -1615,7 +3433,19 @@ export default function TheaterToolBuilder() {
       <div ref={splitRef} className={`splitWorkspace${isResizing ? " resizing" : ""}`} style={{ "--editor-percent": `${editorPercent}%` } as React.CSSProperties}>
         <section className="editorPane">
           <div className="editorTools">
-            <CharacterImageManager presets={presets} setPresets={setPresets} />
+            <CharacterImageManager
+              presets={presets}
+              setPresets={setPresets}
+              activeRoomCode={activeRoomCode}
+              characterLibraryLoading={characterLibraryLoading}
+              characterLibraryMessage={characterLibraryMessage}
+              hasCharacterLibrary={Boolean(characterPresetLibraryMeta)}
+              characterLibraryUsageBytes={characterLibraryUsageBytes}
+              characterLibraryLimitBytes={characterLibraryLimitBytes}
+              isPublicRoom={isActivePublicRoom}
+              onSaveCharacterLibrary={saveCharacterPresetLibraryWithImages}
+              onLoadCharacterLibrary={loadCharacterPresetLibrary}
+            />
             <section className="panel">
               <div className="panelTitle">
                 <Palette size={18} />
@@ -1662,7 +3492,7 @@ export default function TheaterToolBuilder() {
                   onKeyDown={(event) => {
                     if (event.key === "Enter") enterTemplateRoom();
                   }}
-                  placeholder="접속코드 6글자 이상"
+                  placeholder="접속코드 6글자"
                 />
                 <button type="button" onClick={enterTemplateRoom} disabled={templatesLoading}>
                   입장
@@ -1678,10 +3508,62 @@ export default function TheaterToolBuilder() {
               ) : (
                 <div className="emptyTemplates">접속코드를 입력하면 공유 템플릿 저장소가 열립니다.</div>
               )}
-              <button type="button" onClick={saveCurrentTemplate} disabled={!activeRoomCode || templatesLoading}>
+              <button type="button" onClick={saveCurrentTemplateWithImages} disabled={!activeRoomCode || templatesLoading || isActivePublicRoom || isCurrentTemplateTooLarge}>
                 <Plus size={15} />
                 현재 회차 저장
               </button>
+              <div className={`usageBox${isCurrentTemplateTooLarge ? " warning" : ""}`}>
+                <div className="usageText">
+                  <span>현재 회차</span>
+                  <strong>
+                    {formatBytes(currentTemplateBytes)} / {formatBytes(currentTemplateLimitBytes)}
+                  </strong>
+                </div>
+                <div className="usageTrack" aria-hidden="true">
+                  <span style={{ width: `${currentTemplateRatio}%` }} />
+                </div>
+              </div>
+              {activeRoomCode && roomStorageUsage ? (
+                <div className="usageBox">
+                  <div className="usageText">
+                    <span>템플릿 저장량</span>
+                    <strong>
+                      {roomStorageUsage.templatesCount} / {roomStorageUsage.maxTemplates}
+                    </strong>
+                  </div>
+                  <div className="usageText subtle">
+                    <span>템플릿 데이터</span>
+                    <strong>{formatBytes(roomStorageUsage.templatesBytes)}</strong>
+                  </div>
+                  {imageStorageUsage ? (
+                    <div className={`usageBox nestedUsage${isImageStorageTooLarge ? " warning" : ""}`}>
+                      <div className="usageText subtle">
+                        <span>이미지 저장량</span>
+                        <strong>
+                          {imageStorageUsage.imageCount}장 · {formatBytes(imageStorageUsage.imageBytes)} / {formatBytes(imageStorageLimitBytes)}
+                        </strong>
+                      </div>
+                      <div className="usageTrack" aria-hidden="true">
+                        <span style={{ width: `${imageStorageRatio}%` }} />
+                      </div>
+                      {imageStorageUsage.temporaryImageCount ? (
+                        <div className="usageText subtle">
+                          <span>임시 이미지</span>
+                          <strong>
+                            {imageStorageUsage.temporaryImageCount}장 · {formatBytes(imageStorageUsage.temporaryImageBytes ?? 0)}
+                          </strong>
+                        </div>
+                      ) : null}
+                      {imageStorageUsage.missingImages ? (
+                        <div className="usageText subtle">
+                          <span>누락 이미지</span>
+                          <strong>{imageStorageUsage.missingImages}장</strong>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
               {templatesMessage ? <div className="templateMessage">{templatesMessage}</div> : null}
               {activeRoomCode && templates.length === 0 && !templatesLoading ? (
                 <div className="emptyTemplates">저장된 템플릿 없음</div>
@@ -1691,15 +3573,60 @@ export default function TheaterToolBuilder() {
                     <div className="templateItem" key={template.id}>
                       <button type="button" className="templateLoad" onClick={() => loadTemplate(template)} title="템플릿 불러오기">
                         <span>{template.name}</span>
-                        <small>{new Date(template.createdAt).toLocaleString()}</small>
+                        <small>
+                          {new Date(template.createdAt).toLocaleString()}
+                          {template.versionCount ? ` · 버전 ${template.versionCount}` : ""}
+                          {template.bytes ? ` · ${formatBytes(template.bytes)}` : ""}
+                        </small>
                       </button>
-                      <button type="button" className="iconButton danger" onClick={() => deleteTemplate(template.id)} aria-label="템플릿 삭제" disabled={templatesLoading}>
+                      <button type="button" className="iconButton" onClick={() => restoreLatestTemplateVersion(template.id)} aria-label="이전 버전으로 되돌리기" disabled={templatesLoading || isActivePublicRoom || !template.versionCount}>
+                        <RotateCcw size={15} />
+                      </button>
+                      <button type="button" className="iconButton danger" onClick={() => deleteTemplate(template.id)} aria-label="템플릿 삭제" disabled={templatesLoading || isActivePublicRoom}>
                         <Trash2 size={15} />
                       </button>
                     </div>
                   ))}
                 </div>
               )}
+              {trashedTemplates.length ? (
+                <div className="trashBox">
+                  <div className="usageText">
+                    <span>휴지통</span>
+                    <strong>{trashedTemplates.length}개</strong>
+                  </div>
+                  <div className="templateList">
+                    {trashedTemplates.slice(0, 5).map((template) => (
+                      <div className="templateItem" key={`trash-${template.id}`}>
+                        <button type="button" className="templateLoad" onClick={() => restoreTemplate(template.id)} disabled={templatesLoading || isActivePublicRoom} title="템플릿 복구">
+                          <span>{template.name}</span>
+                          <small>
+                            삭제 {template.deletedAt ? new Date(template.deletedAt).toLocaleString() : ""}
+                          </small>
+                        </button>
+                        <button type="button" className="iconButton" onClick={() => restoreTemplate(template.id)} aria-label="템플릿 복구" disabled={templatesLoading || isActivePublicRoom}>
+                          <Undo2 size={15} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              {activityLog.length ? (
+                <div className="activityBox">
+                  <div className="usageText">
+                    <span>최근 활동</span>
+                    <strong>{activityLog.length}</strong>
+                  </div>
+                  {activityLog.slice(0, 6).map((entry) => (
+                    <div className="activityItem" key={entry.id}>
+                      <span>{formatActivityType(entry.type)}</span>
+                      <strong>{entry.targetName}</strong>
+                      <small>{new Date(entry.at).toLocaleString()}</small>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
             </section>
             <section className="panel">
               <div className="panelTitle">
@@ -1722,11 +3649,31 @@ export default function TheaterToolBuilder() {
           </div>
 
           <section className="editorList">
-            {data.blocks.map((block, index) => (
-              <article className="editorCard" key={block.id}>
+            {data.blocks.map((block, index) => {
+              const isCollapsed = collapsedIds.has(block.id);
+              return (
+                <article
+                  className={`editorCard${isCollapsed ? " collapsed" : ""}`}
+                  key={block.id}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={(event) => movePageBlockByDrop(event, index)}
+                >
                 <div className="blockHeader">
-                  <strong>{isSceneCard(block) ? "장면" : MODULE_LABELS[block.moduleType]}</strong>
+                  <strong>
+                    <span
+                      className="dragHandle"
+                      draggable
+                      title="드래그로 이동"
+                      onDragStart={(event) => writeDragPayload(event, { scope: "page", id: block.id })}
+                    >
+                      <GripVertical size={15} />
+                    </span>
+                    {isSceneCard(block) ? "장면" : MODULE_LABELS[block.moduleType]}
+                  </strong>
                   <div>
+                    <button type="button" className="iconButton" onClick={() => toggleCollapsed(block.id)} title={isCollapsed ? "펼치기" : "접기"}>
+                      {isCollapsed ? <ChevronDown size={15} /> : <ChevronUp size={15} />}
+                    </button>
                     <button type="button" className="iconButton" onClick={() => commitData((current) => ({ ...current, blocks: moveArrayItem(current.blocks, index, -1) }))}>
                       <ArrowUp size={15} />
                     </button>
@@ -1738,21 +3685,24 @@ export default function TheaterToolBuilder() {
                     </button>
                   </div>
                 </div>
-                {isSceneCard(block) ? (
+                {isCollapsed ? null : isSceneCard(block) ? (
                   <SceneEditor
                     scene={block}
                     presets={presets}
                     onChange={(scene) => updateBlock(block.id, scene)}
                     onBlockChange={updateSceneBlock}
                     showReferences={showReferences}
+                    collapsedIds={collapsedIds}
+                    onToggleCollapse={toggleCollapsed}
                   />
                 ) : (
                   <div className="fieldGrid">
                     <RichTextArea value={block.content} rows={block.moduleType === "narration" ? 5 : 2} onChange={(content) => updateBlock(block.id, { ...block, content })} />
                   </div>
                 )}
-              </article>
-            ))}
+                </article>
+              );
+            })}
           </section>
         </section>
 
@@ -1774,13 +3724,13 @@ export default function TheaterToolBuilder() {
 const appCss = `
 .appShell {
   --app-bg: #12110f;
-  --app-surface: #191713;
-  --app-surface-2: #151410;
-  --app-surface-3: #11100e;
+  --app-surface: #151412;
+  --app-surface-2: #1d1a16;
+  --app-surface-3: #242019;
   --app-control: #201d18;
   --app-control-2: #141310;
-  --app-border: #2e2a24;
-  --app-border-2: #3b352d;
+  --app-border: #3a342a;
+  --app-border-2: #4a4235;
   --app-text: #efe8dc;
   --app-dim: #a69b8c;
   --app-faint: #756c5f;
@@ -1789,7 +3739,7 @@ const appCss = `
   --scroll-track: #1b1916;
   --scroll-thumb: rgb(200, 169, 110);
 }
-.appShell.theme-light {
+.appShell.theme-ivoryGold {
   --app-bg: #f3eee6;
   --app-surface: #fffaf2;
   --app-surface-2: #f6efe4;
@@ -1806,14 +3756,67 @@ const appCss = `
   --scroll-track: #e6dccd;
   --scroll-thumb: rgb(200, 169, 110);
 }
+.appShell.theme-midnightBlue {
+  --app-bg: #0d1320;
+  --app-surface: #151d2b;
+  --app-surface-2: #111827;
+  --app-surface-3: #1d2738;
+  --app-control: #1b2535;
+  --app-control-2: #101827;
+  --app-border: #2c3a52;
+  --app-border-2: #3b4e6c;
+  --app-text: #d9e4f2;
+  --app-dim: #aebbd0;
+  --app-faint: #6f7f98;
+  --app-accent: #9fb6d8;
+  --app-accent-soft: #d6e5f8;
+  --scroll-track: #101828;
+  --scroll-thumb: #8ea9cf;
+}
+.appShell.theme-wineRose {
+  --app-bg: #1d0f15;
+  --app-surface: #27151d;
+  --app-surface-2: #211219;
+  --app-surface-3: #321d26;
+  --app-control: #33202a;
+  --app-control-2: #1b1016;
+  --app-border: #49303a;
+  --app-border-2: #61404b;
+  --app-text: #f0dbe0;
+  --app-dim: #c8adb4;
+  --app-faint: #866b73;
+  --app-accent: #d6a0a8;
+  --app-accent-soft: #ffd5dc;
+  --scroll-track: #24131a;
+  --scroll-thumb: #c88d98;
+}
 .appShell, .appShell * { box-sizing: border-box; }
-html { scrollbar-color: rgb(200, 169, 110) #1b1916; scrollbar-width: thin; }
+html {
+  --page-scroll-track: #1b1916;
+  --page-scroll-thumb: rgb(200, 169, 110);
+  scrollbar-color: var(--page-scroll-thumb) var(--page-scroll-track);
+  scrollbar-width: thin;
+}
+html:has(.appShell.theme-ivoryGold) {
+  --page-scroll-track: #e6dccd;
+  --page-scroll-thumb: rgb(200, 169, 110);
+}
+html:has(.appShell.theme-midnightBlue) {
+  --page-scroll-track: #101828;
+  --page-scroll-thumb: #8ea9cf;
+}
+html:has(.appShell.theme-wineRose) {
+  --page-scroll-track: #24131a;
+  --page-scroll-thumb: #c88d98;
+}
 body { margin: 0; background: #12110f; color: #efe8dc; font-family: Pretendard, 'Noto Sans KR', system-ui, sans-serif; }
-body:has(.appShell.theme-light) { background: #f3eee6; color: #28231e; }
-* { scrollbar-color: var(--scroll-thumb, rgb(200, 169, 110)) var(--scroll-track, #1b1916); scrollbar-width: thin; }
+body:has(.appShell.theme-ivoryGold) { background: #f3eee6; color: #28231e; }
+body:has(.appShell.theme-midnightBlue) { background: #0d1320; color: #d9e4f2; }
+body:has(.appShell.theme-wineRose) { background: #1d0f15; color: #f0dbe0; }
+* { scrollbar-color: var(--scroll-thumb, var(--page-scroll-thumb)) var(--scroll-track, var(--page-scroll-track)); scrollbar-width: thin; }
 ::-webkit-scrollbar { width: 12px; height: 12px; }
-::-webkit-scrollbar-track { background: var(--scroll-track, #1b1916); }
-::-webkit-scrollbar-thumb { background: var(--scroll-thumb, rgb(200, 169, 110)); border: 3px solid var(--scroll-track, #1b1916); border-radius: 999px; }
+::-webkit-scrollbar-track { background: var(--scroll-track, var(--page-scroll-track)); }
+::-webkit-scrollbar-thumb { background: var(--scroll-thumb, var(--page-scroll-thumb)); border: 3px solid var(--scroll-track, var(--page-scroll-track)); border-radius: 999px; }
 button, input, textarea, select { font: inherit; }
 button { min-height: 36px; border: 1px solid var(--app-border-2); background: var(--app-control); color: var(--app-text); padding: 7px 10px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; cursor: pointer; }
 button:hover, button.active { border-color: var(--app-accent); color: var(--app-accent-soft); }
@@ -1825,6 +3828,10 @@ textarea { resize: vertical; line-height: 1.6; }
 .toolbar h1 { margin: 0; font-size: 22px; }
 .toolbar p { margin: 2px 0 0; color: var(--app-dim); font-size: 13px; }
 .toolbarActions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.themePicker { display: inline-flex; align-items: center; gap: 6px; padding: 3px 7px; border: 1px solid var(--app-border-2); border-radius: 999px; background: var(--app-control); font-size: 0; }
+.themeButton { width: 28px; min-height: 28px; height: 28px; padding: 0; border-radius: 999px; border-color: transparent; background: transparent; }
+.themeButton.active { border-color: var(--app-accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--app-accent) 22%, transparent); }
+.themeSwatch { width: 18px; height: 18px; border: 1px solid color-mix(in srgb, var(--app-border-2) 70%, white 20%); border-radius: 999px; background: linear-gradient(90deg, var(--theme-a) 0 50%, var(--theme-b) 50% 100%); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.12); }
 .splitWorkspace { --editor-percent: 52%; display: grid; grid-template-columns: minmax(420px, var(--editor-percent)) 12px minmax(360px, 1fr); gap: 12px; padding: 18px 24px 32px; align-items: start; }
 .splitWorkspace.resizing { cursor: col-resize; user-select: none; }
 .editorPane { min-width: 0; display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 14px; align-items: start; }
@@ -1834,37 +3841,122 @@ textarea { resize: vertical; line-height: 1.6; }
 .resizeHandle:hover::before, .resizeHandle:focus-visible::before, .splitWorkspace.resizing .resizeHandle::before { width: 6px; background: var(--app-accent); }
 .previewPane { position: sticky; top: 92px; min-width: 0; height: calc(100vh - 112px); border: 1px solid var(--app-border); background: var(--app-surface); border-radius: 8px; overflow: hidden; }
 .previewHeader { height: 42px; display: flex; align-items: center; gap: 8px; padding: 0 13px; border-bottom: 1px solid var(--app-border); color: var(--app-accent-soft); font-weight: 700; }
-.panel, .editorCard, .blockEditor { border: 1px solid var(--app-border); background: var(--app-surface); border-radius: 8px; padding: 14px; }
+.panel, .editorCard, .blockEditor { border: 1px solid var(--app-border); background: var(--app-surface); border-radius: 8px; padding: 14px; box-shadow: inset 0 1px 0 rgba(255, 240, 200, 0.04); transition: border-color 140ms ease, background-color 140ms ease, box-shadow 140ms ease; }
+.editorCard:hover, .blockEditor:hover { border-color: color-mix(in srgb, var(--app-accent) 38%, var(--app-border-2)); }
+.panel:hover { border-color: color-mix(in srgb, var(--app-accent) 24%, var(--app-border-2)); }
 .panel { display: grid; gap: 8px; align-content: start; }
 .panelTitle, .blockHeader { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; color: var(--app-accent-soft); font-weight: 700; }
 .panelTitle { justify-content: flex-start; }
 .fontControlGroup { display: grid; gap: 7px; padding: 9px; border: 1px solid var(--app-border); border-radius: 8px; background: var(--app-surface-2); }
 .fontBatchButtons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .fontBatchButtons button { padding-left: 8px; padding-right: 8px; }
-.emptyTemplates { padding: 10px; border: 1px dashed var(--app-border-2); border-radius: 8px; color: var(--app-faint); font-size: 12px; text-align: center; }
+.emptyTemplates { padding: 10px; border: 1px dashed var(--app-border-2); border-radius: 8px; color: var(--app-faint); font-size: 12px; line-height: 1.45; text-align: center; word-break: keep-all; overflow-wrap: break-word; }
 .roomBox { display: grid; grid-template-columns: minmax(0, 1fr) 58px; gap: 7px; }
 .roomBox button { padding-left: 8px; padding-right: 8px; }
 .roomStatus { display: grid; grid-template-columns: minmax(0, 1fr) 58px; gap: 7px; align-items: center; padding: 8px; border: 1px solid var(--app-border); border-radius: 8px; background: var(--app-surface-2); font-size: 12px; color: var(--app-dim); }
 .roomStatus span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .roomStatus button { min-height: 28px; padding: 3px 7px; font-size: 12px; }
 .templateMessage { padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, var(--app-accent) 12%, transparent); color: var(--app-accent-soft); font-size: 12px; line-height: 1.5; }
+.usageBox { display: grid; gap: 6px; padding: 8px; border: 1px solid var(--app-border); border-radius: 8px; background: var(--app-surface-2); }
+.nestedUsage { margin-top: 2px; padding: 7px; background: var(--app-surface-3); }
+.usageText { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--app-dim); font-size: 12px; line-height: 1.4; }
+.usageText strong { color: var(--app-accent-soft); font-size: 12px; white-space: nowrap; }
+.usageText.subtle strong { color: var(--app-dim); font-weight: 600; }
+.usageTrack { height: 6px; border-radius: 999px; overflow: hidden; background: var(--app-control-2); border: 1px solid var(--app-border); }
+.usageTrack span { display: block; height: 100%; max-width: 100%; border-radius: inherit; background: var(--app-accent); }
+.usageBox.warning { border-color: #e37a7a; background: color-mix(in srgb, var(--app-surface-2) 80%, #e37a7a 20%); }
+.usageBox.warning .usageText strong { color: #ffb4b4; }
+.usageBox.warning .usageTrack span { background: #e37a7a; }
 .templateList { display: grid; gap: 7px; }
-.templateItem { display: grid; grid-template-columns: minmax(0, 1fr) 34px; gap: 7px; align-items: stretch; }
+.templateItem { display: grid; grid-template-columns: minmax(0, 1fr) 34px 34px; gap: 7px; align-items: stretch; }
 .templateLoad { min-width: 0; justify-content: flex-start; align-items: flex-start; flex-direction: column; gap: 1px; text-align: left; }
 .templateLoad span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .templateLoad small { color: var(--app-faint); font-size: 11px; font-weight: 400; }
+.trashBox, .activityBox { display: grid; gap: 7px; padding: 8px; border: 1px dashed var(--app-border-2); border-radius: 8px; background: var(--app-surface-2); }
+.activityItem { display: grid; grid-template-columns: 42px minmax(0, 1fr); gap: 4px 7px; align-items: center; color: var(--app-dim); font-size: 12px; }
+.activityItem strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--app-accent-soft); font-size: 12px; }
+.activityItem small { grid-column: 2; color: var(--app-faint); font-size: 11px; }
 .characterGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.characterChip { min-height: 46px; border: 1px solid var(--app-border); background: var(--app-control-2); border-radius: 8px; padding: 7px; display: flex; align-items: center; gap: 7px; cursor: pointer; font-size: 12px; }
-.characterChip input, .hiddenInput { display: none; }
+.characterChip { min-width: 0; min-height: 46px; border: 1px solid var(--app-border); background: var(--app-control-2); border-radius: 8px; padding: 7px; display: flex; align-items: center; justify-content: flex-start; gap: 7px; cursor: pointer; font-size: 12px; }
+.characterChip span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hiddenInput { display: none; }
 .miniAvatar { width: 30px; height: 30px; border: 2px solid; border-radius: 50%; display: flex; align-items: center; justify-content: center; overflow: hidden; flex: 0 0 auto; font-size: 10px; }
 .miniAvatar img { width: 100%; height: 100%; object-fit: cover; }
+.characterPresetManager { display: grid; gap: 8px; padding: 9px; border: 1px solid var(--app-border); border-radius: 8px; background: var(--app-surface-2); }
+.characterPresetHeader { display: flex; align-items: center; gap: 8px; color: var(--app-accent-soft); }
+.characterLibraryBox { display: grid; gap: 8px; padding: 9px; border: 1px solid var(--app-border); border-radius: 8px; background: var(--app-surface-2); }
+.characterLibraryActions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.characterLibraryActions button { min-width: 0; padding-left: 6px; padding-right: 6px; font-size: 12px; white-space: nowrap; }
+.characterLibraryCode { min-width: 0; padding: 7px 8px; border: 1px solid var(--app-border); border-radius: 8px; color: var(--app-dim); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.presetManagerTitle { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; color: var(--app-dim); font-size: 12px; font-weight: 700; }
+.characterLibraryBox .presetManagerTitle { grid-template-columns: 1fr; margin-bottom: 0; }
+.presetManagerTitle button { min-height: 30px; padding: 4px 7px; font-size: 12px; }
+.presetCount { margin-top: -3px; color: var(--app-faint); font-size: 11px; text-align: right; }
+.dangerTextButton:hover { border-color: #e37a7a; color: #ffb4b4; }
+.profilePresetFolderList { display: grid; gap: 8px; }
+.profilePresetFolder { display: grid; gap: 6px; }
+.profilePresetFolderTop { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; align-items: center; }
+.profilePresetFolderName { width: 100%; min-height: 32px; justify-content: flex-start; display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 6px; align-items: center; text-align: left; padding: 5px 8px; border-color: var(--app-border-2); background: color-mix(in srgb, var(--app-control-2) 72%, var(--app-accent) 18%); color: var(--app-accent-soft); }
+.profilePresetFolderName span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.profilePresetFolderName small { color: var(--app-faint); font-size: 11px; }
+.profilePresetOrderActions { display: flex; gap: 6px; }
+.profilePresetOrderActions .iconButton { width: 30px; min-height: 30px; height: 30px; }
+.profilePresetFolderBody { display: grid; gap: 7px; padding: 7px; border: 1px solid var(--app-border-2); border-radius: 8px; background: var(--app-surface-3); }
+.profilePresetFolderActions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.profilePresetFolderActions button { min-width: 0; min-height: 42px; padding: 5px 6px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; font-size: 12px; line-height: 1.15; white-space: normal; }
+.profilePresetFolderActions button span { display: inline-block; text-align: center; }
+.profilePresetPreviewGrid { display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-start; }
+.profilePresetTileWrap { position: relative; width: 46px; height: 46px; }
+.profilePresetTile { position: relative; width: 46px; height: 46px; padding: 0; border: 1px solid var(--app-border-2); border-radius: 8px; overflow: visible; display: flex; align-items: center; justify-content: center; background: var(--app-control-2); color: var(--app-dim); cursor: pointer; }
+.profilePresetTile > img { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 7px; }
+.profilePresetTile input { display: none; }
+.profilePresetTileDelete { position: absolute; top: -5px; right: -5px; width: 20px; min-height: 20px; height: 20px; padding: 0; border-radius: 999px; border-color: rgba(227, 122, 122, 0.7); background: color-mix(in srgb, var(--app-control) 72%, #9d2b2b 28%); color: #ffd2d2; }
+.profilePresetTileDelete:disabled { opacity: 0.35; }
+.fileIconButton { cursor: pointer; }
+.fileIconButton input { display: none; }
+.characterPicker { position: relative; display: grid; gap: 7px; }
+.characterPickerButton { width: 100%; min-height: 52px; justify-content: flex-start; padding: 6px 9px; display: grid; grid-template-columns: 38px minmax(0, 1fr) 20px; text-align: left; }
+.characterPickerImage { width: 36px; height: 36px; border: 2px solid; border-radius: 50%; overflow: hidden; display: flex; align-items: center; justify-content: center; background: var(--app-surface-3); color: var(--app-dim); font-size: 11px; font-weight: 700; }
+.characterPickerImage img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.characterPickerText { min-width: 0; display: grid; gap: 1px; align-content: center; }
+.characterPickerText span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.profileImageFolders { display: grid; gap: 7px; padding: 7px; border: 1px solid var(--app-border); border-radius: 8px; background: var(--app-surface-2); }
+.profileImageFolder { display: grid; gap: 6px; min-width: 0; }
+.profileImageFolderHeader { width: 100%; min-height: 30px; display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 5px; align-items: center; justify-content: stretch; text-align: left; padding: 4px 7px; border-color: var(--app-border-2); background: color-mix(in srgb, var(--app-control) 78%, var(--app-accent) 22%); color: var(--app-accent-soft); }
+.profileImageFolderHeader span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.profileImageFolderHeader small { color: var(--app-faint); font-size: 11px; }
+.profileImageGrid { display: flex; flex-wrap: wrap; gap: 7px; align-items: flex-start; }
+.profileImageTile { position: relative; width: 54px; min-height: 54px; padding: 4px; display: grid; place-items: center; gap: 3px; border-radius: 8px; background: var(--app-control-2); color: var(--app-dim); font-size: 10px; }
+.profileImageTile.default { width: auto; min-height: 40px; grid-template-columns: 30px auto; justify-content: flex-start; padding: 5px 8px; }
+.profileImageTile.active { border-color: var(--app-accent); background: color-mix(in srgb, var(--app-control) 70%, var(--app-accent) 30%); color: var(--app-accent-soft); }
+.profileImageTilePreview { width: 44px; height: 44px; border: 2px solid var(--app-border-2); border-radius: 8px; overflow: hidden; display: flex; align-items: center; justify-content: center; background: var(--app-surface-3); color: var(--app-dim); font-size: 10px; font-weight: 700; }
+.profileImageTile.default .profileImageTilePreview { width: 28px; height: 28px; border-radius: 50%; }
+.profileImageTilePreview img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.imageHoverPreview { position: absolute; left: 50%; bottom: calc(100% + 8px); z-index: 50; width: 184px; height: 184px; padding: 5px; border: 1px solid var(--app-border-2); border-radius: 10px; background: var(--app-surface); box-shadow: 0 18px 42px rgba(0, 0, 0, 0.45); opacity: 0; pointer-events: none; transform: translate(-50%, 6px) scale(0.96); transition: opacity 120ms ease, transform 120ms ease; }
+.imageHoverPreview img { width: 100%; height: 100%; object-fit: contain; display: block; border-radius: 7px; background: var(--app-surface-2); }
+.profileImageTile:hover .imageHoverPreview,
+.profilePresetTile:hover .imageHoverPreview { opacity: 1; transform: translate(-50%, 0) scale(1); }
+.characterSelectGrid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 7px; }
+.characterSelectCard { min-width: 0; min-height: 88px; padding: 7px 4px; display: grid; justify-items: center; align-content: start; gap: 5px; border-radius: 8px; background: var(--app-control-2); }
+.characterSelectCard.active { border-color: var(--app-accent); background: color-mix(in srgb, var(--app-control) 72%, var(--app-accent) 28%); color: var(--app-accent-soft); }
+.characterSelectImage { width: 48px; height: 48px; border: 2px solid; border-radius: 50%; overflow: hidden; display: flex; align-items: center; justify-content: center; background: var(--app-surface-3); color: var(--app-dim); font-size: 11px; font-weight: 700; }
+.characterSelectImage img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.characterSelectName { max-width: 100%; min-width: 0; display: grid; gap: 1px; text-align: center; font-size: 11px; line-height: 1.2; }
+.characterSelectName span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .editorList { display: grid; gap: 14px; }
 .sceneEditor { display: grid; gap: 12px; }
 .sceneName { font-weight: 700; }
 .addRow { display: flex; flex-wrap: wrap; gap: 8px; }
 .blockEditor { background: var(--app-surface-2); }
+.editorCard.collapsed, .blockEditor.collapsed { background: color-mix(in srgb, var(--app-surface-2) 86%, var(--app-control) 14%); }
+.editorCard.collapsed .blockHeader, .blockEditor.collapsed .blockHeader { margin-bottom: 0; }
 .blockEditor:has(.referenceEditor) { border-style: dashed; background: color-mix(in srgb, var(--app-surface-2) 78%, var(--app-accent) 10%); }
-.blockHeader > div { display: flex; gap: 6px; }
+.blockHeader { justify-content: flex-start; }
+.blockHeader strong { min-width: 0; flex: 1; display: flex; align-items: center; gap: 7px; }
+.blockHeader > div { display: flex; gap: 6px; margin-left: auto; }
+.dragHandle { width: 26px; height: 26px; border: 1px solid var(--app-border); border-radius: 7px; display: inline-flex; align-items: center; justify-content: center; color: var(--app-dim); background: var(--app-control); cursor: grab; flex: 0 0 auto; }
+.dragHandle:active { cursor: grabbing; }
+.dragHandle:hover { color: var(--app-accent-soft); border-color: var(--app-border-2); }
 .iconButton { width: 34px; min-height: 34px; padding: 0; }
 .danger:hover { border-color: #e37a7a; color: #ffb4b4; }
 .fieldGrid { display: grid; gap: 9px; min-width: 0; }
@@ -1873,6 +3965,7 @@ textarea { resize: vertical; line-height: 1.6; }
 .lineEditorRich { display: grid; gap: 7px; padding: 8px; border: 1px solid var(--app-border); border-radius: 8px; background: var(--app-surface-3); }
 .lineMeta { display: grid; grid-template-columns: minmax(0, 1fr) 34px; gap: 7px; }
 .fileButton { min-height: 36px; border: 1px dashed var(--app-border-2); background: var(--app-surface-2); border-radius: 8px; padding: 8px 10px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; cursor: pointer; color: var(--app-dim); }
+.fileButton.disabled, .fileIconButton.disabled { opacity: 0.45; cursor: not-allowed; }
 .fileButton input { display: none; }
 .richTextBox { display: grid; gap: 6px; min-width: 0; }
 .inlineToolbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
