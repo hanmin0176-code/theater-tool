@@ -1,4 +1,4 @@
-import React, { ChangeEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+﻿import React, { ChangeEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDown,
   ArrowUp,
@@ -22,7 +22,6 @@ import {
   Upload
 } from "lucide-react";
 import { toPng } from "html-to-image";
-import defaultTemplate from "./defaultTemplate.json";
 import publicSampleTemplate1 from "./publicSampleTemplate1.json";
 import publicSampleTemplate2 from "./publicSampleTemplate2.json";
 
@@ -1764,6 +1763,7 @@ async function renderDownloadHtml(data: TheaterData, presets: CharacterPreset[],
 }
 
 const ROOM_STORAGE_KEY = "theater-tool-room-code";
+const ROOM_DRAFT_STORAGE_PREFIX = "theater-tool-room-draft:";
 const PROFILE_GROUP_EXPANDED_STORAGE_KEY = "theater-tool-profile-groups-expanded";
 const PRESET_MANAGER_GROUP_EXPANDED_STORAGE_KEY = "theater-tool-preset-manager-groups-expanded";
 const TEMPLATES_API_PATH = "/.netlify/functions/templates";
@@ -1798,15 +1798,48 @@ function saveStringSet(key: string, values: Set<string>) {
   window.localStorage.setItem(key, JSON.stringify([...values]));
 }
 
+function createEmptyTheaterData(): TheaterData {
+  return {
+    blocks: [],
+    labelFontOffset: 0
+  };
+}
+
 function getInitialDefaultData() {
-  const importedDefaultTemplate = defaultTemplate as TheaterSaveFile & TheaterData;
-  return normalizeTheaterData((importedDefaultTemplate.data ?? importedDefaultTemplate) as TheaterData);
+  return normalizeTheaterData(createEmptyTheaterData());
 }
 
 function getInitialDefaultPresets() {
-  const importedDefaultTemplate = defaultTemplate as TheaterSaveFile & TheaterData;
-  return normalizeCharacterPresets(
-    Array.isArray(importedDefaultTemplate.presets) ? importedDefaultTemplate.presets : CHARACTER_PRESETS
+  return normalizeCharacterPresets(CHARACTER_PRESETS);
+}
+
+function getRoomDraftStorageKey(roomCode: string) {
+  return `${ROOM_DRAFT_STORAGE_PREFIX}${normalizeRoomCode(roomCode)}`;
+}
+
+function loadRoomDraft(roomCode: string) {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(getRoomDraftStorageKey(roomCode)) || "null") as (TheaterSaveFile & { savedAt?: string }) | null;
+    if (!parsed?.data?.blocks) return null;
+    return {
+      savedAt: typeof parsed.savedAt === "string" ? parsed.savedAt : "",
+      data: normalizeTheaterData(hydrateDataImages(parsed.data)),
+      presets: parsed.presets ? normalizeCharacterPresets(hydratePresetImages(parsed.presets)) : getInitialDefaultPresets()
+    };
+  } catch {
+    return null;
+  }
+}
+
+function saveRoomDraft(roomCode: string, data: TheaterData, presets: CharacterPreset[]) {
+  if (!roomCode) return;
+  const saveFile = createSaveFile(data, presets);
+  window.localStorage.setItem(
+    getRoomDraftStorageKey(roomCode),
+    JSON.stringify({
+      ...saveFile,
+      savedAt: new Date().toISOString()
+    })
   );
 }
 
@@ -2725,6 +2758,7 @@ export default function TheaterToolBuilder() {
   const splitRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLIFrameElement>(null);
   const previewScrollRef = useRef({ x: 0, y: 0 });
+  const hydratedRoomRef = useRef<string | null>(null);
   const [previewBody, setPreviewBody] = useState(() => renderPreviewBody(data, presets));
   const [previewCss, setPreviewCss] = useState(() => renderCss(data));
   const isActivePublicRoom = isPublicSampleRoom(activeRoomCode);
@@ -2767,7 +2801,12 @@ export default function TheaterToolBuilder() {
 
   useEffect(() => {
     const roomCode = normalizeRoomCode(activeRoomCode);
+    hydratedRoomRef.current = null;
     if (!roomCode) {
+      setHistory([]);
+      setFuture([]);
+      setData(getInitialDefaultData());
+      setPresets(getInitialDefaultPresets());
       setTemplates([]);
       setTrashedTemplates([]);
       setActivityLog([]);
@@ -2776,6 +2815,7 @@ export default function TheaterToolBuilder() {
       setRoomStorageUsage(null);
       setImageStorageUsage(null);
       setCharacterLibraryMessage("");
+      hydratedRoomRef.current = "";
       return;
     }
 
@@ -2783,18 +2823,23 @@ export default function TheaterToolBuilder() {
       const sampleTemplates = createPublicSampleTemplates();
       const sampleLibrary = createCharacterPresetLibrary(CHARACTER_PRESETS);
       const initialSampleTemplate = sampleTemplates[0] ?? null;
+      const draft = loadRoomDraft(roomCode);
       setHistory([]);
       setFuture([]);
-      if (initialSampleTemplate) {
+      if (draft) {
+        setData(draft.data);
+        setPresets(draft.presets);
+      } else if (initialSampleTemplate) {
         setData(normalizeTheaterData(initialSampleTemplate.data));
         setPresets(normalizeCharacterPresets(initialSampleTemplate.presets));
       } else {
+        setData(getInitialDefaultData());
         setPresets(normalizeCharacterPresets(sampleLibrary.presets));
       }
       setTemplates(sampleTemplates.map(summarizeTemplate));
       setTrashedTemplates([]);
       setActivityLog([]);
-      setTemplatesMessage("000000은 읽기 전용 샘플 코드입니다.");
+      setTemplatesMessage(draft ? "000000 마지막 작업 초안을 불러왔습니다." : "000000은 읽기 전용 샘플 코드입니다. 1번 템플릿을 불러왔습니다.");
       setCharacterPresetLibraryMeta({ updatedAt: sampleLibrary.updatedAt, bytes: getJsonByteLength(sampleLibrary) });
       setRoomStorageUsage({
         characterLibraryBytes: getJsonByteLength(sampleLibrary),
@@ -2807,6 +2852,7 @@ export default function TheaterToolBuilder() {
       });
       setImageStorageUsage({ imageBytes: 0, imageCount: 0, missingImages: 0, imageLimitBytes: ROOM_IMAGE_LIMIT_BYTES });
       setCharacterLibraryMessage("공식 샘플 프리셋을 불러올 수 있습니다.");
+      hydratedRoomRef.current = roomCode;
       return;
     }
 
@@ -2814,8 +2860,9 @@ export default function TheaterToolBuilder() {
     setTemplatesLoading(true);
     setTemplatesMessage("템플릿을 불러오는 중입니다.");
     Promise.all([requestTemplates("GET", roomCode), requestImageUsage(roomCode)])
-      .then(([{ templates: nextTemplates, trashedTemplates: nextTrashedTemplates, activityLog: nextActivityLog, characterPresetLibraryMeta: nextLibraryMeta, usage }, nextImageUsage]) => {
+      .then(async ([{ templates: nextTemplates, trashedTemplates: nextTrashedTemplates, activityLog: nextActivityLog, characterPresetLibraryMeta: nextLibraryMeta, usage }, nextImageUsage]) => {
         if (cancelled) return;
+        const draft = loadRoomDraft(roomCode);
         setTemplates(nextTemplates);
         setTrashedTemplates(nextTrashedTemplates);
         setActivityLog(nextActivityLog);
@@ -2823,10 +2870,40 @@ export default function TheaterToolBuilder() {
         setRoomStorageUsage(usage);
         setImageStorageUsage(nextImageUsage);
         setCharacterLibraryMessage("");
-        setTemplatesMessage(nextTemplates.length ? "" : "이 접속코드에는 아직 저장된 템플릿이 없습니다.");
+        setHistory([]);
+        setFuture([]);
+
+        if (draft) {
+          setData(draft.data);
+          setPresets(draft.presets);
+          setTemplatesMessage("마지막 작업 초안을 불러왔습니다.");
+          hydratedRoomRef.current = roomCode;
+          return;
+        }
+
+        if (nextTemplates.length) {
+          const { template: firstTemplate } = await requestTemplates("GET", roomCode, undefined, { templateId: nextTemplates[0].id });
+          if (cancelled) return;
+          if (firstTemplate) {
+            setData(normalizeTheaterData(hydrateDataImages(firstTemplate.data)));
+            setPresets(normalizeCharacterPresets(hydratePresetImages(firstTemplate.presets)));
+            setTemplatesMessage("1번 템플릿을 불러왔습니다.");
+            hydratedRoomRef.current = roomCode;
+            return;
+          }
+        }
+
+        setData(getInitialDefaultData());
+        setPresets(getInitialDefaultPresets());
+        setTemplatesMessage("이 접속코드에는 아직 저장된 템플릿이 없습니다.");
+        hydratedRoomRef.current = roomCode;
       })
       .catch((error) => {
         if (cancelled) return;
+        setHistory([]);
+        setFuture([]);
+        setData(getInitialDefaultData());
+        setPresets(getInitialDefaultPresets());
         setTemplates([]);
         setTrashedTemplates([]);
         setActivityLog([]);
@@ -2835,6 +2912,7 @@ export default function TheaterToolBuilder() {
         setImageStorageUsage(null);
         setCharacterLibraryMessage("");
         setTemplatesMessage(error instanceof Error ? error.message : "템플릿을 불러오지 못했습니다.");
+        hydratedRoomRef.current = roomCode;
       })
       .finally(() => {
         if (!cancelled) setTemplatesLoading(false);
@@ -2853,6 +2931,16 @@ export default function TheaterToolBuilder() {
 
     return () => window.clearTimeout(timeoutId);
   }, [data, presets]);
+
+  useEffect(() => {
+    const roomCode = normalizeRoomCode(activeRoomCode);
+    if (!roomCode || hydratedRoomRef.current !== roomCode) return;
+    const timeoutId = window.setTimeout(() => {
+      saveRoomDraft(roomCode, data, presets);
+    }, 350);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [activeRoomCode, data, presets]);
 
   const commitData = (next: TheaterData | ((current: TheaterData) => TheaterData)) => {
     setData((current) => {
