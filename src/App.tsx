@@ -24,6 +24,7 @@ import {
 import { toPng } from "html-to-image";
 import defaultTemplate from "./defaultTemplate.json";
 import publicSampleTemplate1 from "./publicSampleTemplate1.json";
+import publicSampleTemplate2 from "./publicSampleTemplate2.json";
 
 type ModuleType = "title" | "subtitle" | "narration";
 type SceneBlockType = "sceneHeader" | "character" | "narration" | "afterword" | "tikitaka" | "reference";
@@ -791,10 +792,12 @@ const sampleData: TheaterData = {
 
 function createPublicSampleTemplates(): SavedTemplate[] {
   const importedSampleTemplate = publicSampleTemplate1 as TheaterSaveFile & TheaterData;
+  const importedSampleTemplate2 = publicSampleTemplate2 as TheaterSaveFile & TheaterData;
   const samplePresets = normalizeCharacterPresets(
     Array.isArray(importedSampleTemplate.presets) ? importedSampleTemplate.presets : CHARACTER_PRESETS
   );
   const sampleTemplateData = normalizeTheaterData((importedSampleTemplate.data ?? importedSampleTemplate) as TheaterData);
+  const sampleTemplateData2 = normalizeTheaterData((importedSampleTemplate2.data ?? importedSampleTemplate2) as TheaterData);
   return [
     {
       id: "sample-default-template",
@@ -807,7 +810,7 @@ function createPublicSampleTemplates(): SavedTemplate[] {
       id: "sample-scene-template",
       name: "제작 참고 템플릿 2",
       createdAt: "2026-04-23T00:00:00.000Z",
-      data: normalizeTheaterData(sampleData),
+      data: sampleTemplateData2,
       presets: samplePresets
     }
   ];
@@ -1766,6 +1769,18 @@ function saveStringSet(key: string, values: Set<string>) {
   window.localStorage.setItem(key, JSON.stringify([...values]));
 }
 
+function getInitialDefaultData() {
+  const importedDefaultTemplate = defaultTemplate as TheaterSaveFile & TheaterData;
+  return normalizeTheaterData((importedDefaultTemplate.data ?? importedDefaultTemplate) as TheaterData);
+}
+
+function getInitialDefaultPresets() {
+  const importedDefaultTemplate = defaultTemplate as TheaterSaveFile & TheaterData;
+  return normalizeCharacterPresets(
+    Array.isArray(importedDefaultTemplate.presets) ? importedDefaultTemplate.presets : CHARACTER_PRESETS
+  );
+}
+
 function normalizeRoomCode(roomCode: string) {
   return roomCode.trim().replace(/\s+/g, " ");
 }
@@ -2655,10 +2670,10 @@ const SceneEditor = React.memo(function SceneEditor({
 );
 
 export default function TheaterToolBuilder() {
-  const [data, setData] = useState<TheaterData>(() => normalizeTheaterData(defaultTemplate as TheaterData));
+  const [data, setData] = useState<TheaterData>(() => getInitialDefaultData());
   const [history, setHistory] = useState<TheaterData[]>([]);
   const [future, setFuture] = useState<TheaterData[]>([]);
-  const [presets, setPresets] = useState<CharacterPreset[]>(() => normalizeCharacterPresets(CHARACTER_PRESETS));
+  const [presets, setPresets] = useState<CharacterPreset[]>(() => getInitialDefaultPresets());
   const [roomInput, setRoomInput] = useState(() => loadInitialRoomCode());
   const [activeRoomCode, setActiveRoomCode] = useState(() => loadInitialRoomCode());
   const [templates, setTemplates] = useState<SavedTemplateSummary[]>([]);
@@ -2738,6 +2753,15 @@ export default function TheaterToolBuilder() {
     if (isPublicSampleRoom(roomCode)) {
       const sampleTemplates = createPublicSampleTemplates();
       const sampleLibrary = createCharacterPresetLibrary(CHARACTER_PRESETS);
+      const initialSampleTemplate = sampleTemplates[0] ?? null;
+      setHistory([]);
+      setFuture([]);
+      if (initialSampleTemplate) {
+        setData(normalizeTheaterData(initialSampleTemplate.data));
+        setPresets(normalizeCharacterPresets(initialSampleTemplate.presets));
+      } else {
+        setPresets(normalizeCharacterPresets(sampleLibrary.presets));
+      }
       setTemplates(sampleTemplates.map(summarizeTemplate));
       setTrashedTemplates([]);
       setActivityLog([]);
