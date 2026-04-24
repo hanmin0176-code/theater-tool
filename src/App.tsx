@@ -1804,6 +1804,8 @@ const ROOM_STORAGE_KEY = "theater-tool-room-code";
 const ROOM_DRAFT_STORAGE_PREFIX = "theater-tool-room-draft:";
 const PROFILE_GROUP_EXPANDED_STORAGE_KEY = "theater-tool-profile-groups-expanded";
 const PRESET_MANAGER_GROUP_EXPANDED_STORAGE_KEY = "theater-tool-preset-manager-groups-expanded";
+const TEMPLATE_LIST_EXPANDED_STORAGE_KEY = "theater-tool-template-list-expanded";
+const TEMPLATE_TRASH_EXPANDED_STORAGE_KEY = "theater-tool-template-trash-expanded";
 const TEMPLATES_API_PATH = "/.netlify/functions/templates";
 const IMAGES_API_PATH = "/.netlify/functions/images";
 
@@ -1834,6 +1836,20 @@ function loadStringSet(key: string) {
 
 function saveStringSet(key: string, values: Set<string>) {
   window.localStorage.setItem(key, JSON.stringify([...values]));
+}
+
+function loadBoolean(key: string, fallback = false) {
+  try {
+    const saved = window.localStorage.getItem(key);
+    if (saved === null) return fallback;
+    return saved === "1";
+  } catch {
+    return fallback;
+  }
+}
+
+function saveBoolean(key: string, value: boolean) {
+  window.localStorage.setItem(key, value ? "1" : "0");
 }
 
 function createEmptyTheaterData(): TheaterData {
@@ -1881,6 +1897,11 @@ function saveRoomDraft(roomCode: string, data: TheaterData, presets: CharacterPr
   );
 }
 
+function clearRoomDraft(roomCode: string) {
+  if (!roomCode) return;
+  window.localStorage.removeItem(getRoomDraftStorageKey(roomCode));
+}
+
 function normalizeRoomCode(roomCode: string) {
   return roomCode.trim().replace(/\s+/g, " ");
 }
@@ -1903,7 +1924,7 @@ async function requestTemplates(
   const response = await fetch(url, {
     method,
     headers: method === "GET" ? undefined : { "content-type": "application/json" },
-    body: method === "GET" ? undefined : JSON.stringify({ roomCode, ...payload })
+    body: method === "GET" ? undefined : JSON.stringify({ roomCode, ...payload, requestOptions: query })
   });
   const result = (await response.json()) as TemplatesApiResponse;
   if (!response.ok) throw new Error(result.error || "템플릿 저장소 요청에 실패했습니다.");
@@ -2788,6 +2809,10 @@ export default function TheaterToolBuilder() {
   const [templates, setTemplates] = useState<SavedTemplateSummary[]>([]);
   const [trashedTemplates, setTrashedTemplates] = useState<SavedTemplateSummary[]>([]);
   const [activityLog, setActivityLog] = useState<ActivityLogEntry[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  const [selectedTemplateName, setSelectedTemplateName] = useState("");
+  const [isTemplateListExpanded, setIsTemplateListExpanded] = useState(() => loadBoolean(TEMPLATE_LIST_EXPANDED_STORAGE_KEY, false));
+  const [isTrashExpanded, setIsTrashExpanded] = useState(() => loadBoolean(TEMPLATE_TRASH_EXPANDED_STORAGE_KEY, false));
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [templatesMessage, setTemplatesMessage] = useState("");
   const [characterPresetLibraryMeta, setCharacterPresetLibraryMeta] = useState<CharacterPresetLibraryMeta | null>(null);
@@ -2821,6 +2846,13 @@ export default function TheaterToolBuilder() {
   const imageStorageRatio = imageStorageUsage ? Math.min(100, Math.round((imageStorageUsage.imageBytes / imageStorageLimitBytes) * 100)) : 0;
   const isImageStorageTooLarge = Boolean(imageStorageUsage && imageStorageUsage.imageBytes > imageStorageLimitBytes);
   const isCurrentTemplateTooLarge = currentTemplateBytes > currentTemplateLimitBytes;
+  const hiddenTemplateCount = Math.max(0, (roomStorageUsage?.templatesCount ?? templates.length) - templates.length);
+  const hiddenTrashCount = Math.max(0, (roomStorageUsage?.trashedTemplatesCount ?? trashedTemplates.length) - trashedTemplates.length);
+  const buildTemplateRequestOptions = (overrides?: { includeAllTemplates?: boolean; includeTrash?: boolean; includeActivity?: boolean }) => ({
+    templateLimit: (overrides?.includeAllTemplates ?? isTemplateListExpanded) ? "0" : "5",
+    includeTrash: (overrides?.includeTrash ?? isTrashExpanded) ? "1" : "0",
+    includeActivity: (overrides?.includeActivity ?? true) ? "1" : "0"
+  });
   const toggleCollapsed = (id: string) => {
     setCollapsedIds((current) => {
       const next = new Set(current);
@@ -2865,6 +2897,23 @@ export default function TheaterToolBuilder() {
     setFuture([]);
   };
 
+  const applyTemplatesPayload = (payload: Pick<TemplatesApiPayload, "templates" | "trashedTemplates" | "activityLog" | "characterPresetLibraryMeta" | "usage">) => {
+    setTemplates(payload.templates);
+    setTrashedTemplates(payload.trashedTemplates);
+    setActivityLog(payload.activityLog);
+    setCharacterPresetLibraryMeta(payload.characterPresetLibraryMeta);
+    setRoomStorageUsage(payload.usage);
+  };
+
+  const refreshTemplateSidebar = async (
+    roomCode: string,
+    overrides?: { includeAllTemplates?: boolean; includeTrash?: boolean; includeActivity?: boolean }
+  ) => {
+    const payload = await requestTemplates("GET", roomCode, undefined, buildTemplateRequestOptions(overrides));
+    applyTemplatesPayload(payload);
+    return payload;
+  };
+
   const scheduleTextUndoFlush = () => {
     if (textUndoTimerRef.current !== null) window.clearTimeout(textUndoTimerRef.current);
     textUndoTimerRef.current = window.setTimeout(() => {
@@ -2878,6 +2927,14 @@ export default function TheaterToolBuilder() {
   }, [data]);
 
   useEffect(() => {
+    saveBoolean(TEMPLATE_LIST_EXPANDED_STORAGE_KEY, isTemplateListExpanded);
+  }, [isTemplateListExpanded]);
+
+  useEffect(() => {
+    saveBoolean(TEMPLATE_TRASH_EXPANDED_STORAGE_KEY, isTrashExpanded);
+  }, [isTrashExpanded]);
+
+  useEffect(() => {
     const roomCode = normalizeRoomCode(activeRoomCode);
     clearPendingTextUndo();
     hydratedRoomRef.current = null;
@@ -2889,6 +2946,8 @@ export default function TheaterToolBuilder() {
       setTemplates([]);
       setTrashedTemplates([]);
       setActivityLog([]);
+      setSelectedTemplateId(null);
+      setSelectedTemplateName("");
       setTemplatesMessage("");
       setCharacterPresetLibraryMeta(null);
       setRoomStorageUsage(null);
@@ -2899,26 +2958,27 @@ export default function TheaterToolBuilder() {
     }
 
     if (isPublicSampleRoom(roomCode)) {
+      clearRoomDraft(roomCode);
       const sampleTemplates = createPublicSampleTemplates();
       const sampleLibrary = createCharacterPresetLibrary(CHARACTER_PRESETS);
       const initialSampleTemplate = sampleTemplates[0] ?? null;
-      const draft = loadRoomDraft(roomCode);
       setHistory([]);
       setFuture([]);
-      if (draft) {
-        setData(draft.data);
-        setPresets(draft.presets);
-      } else if (initialSampleTemplate) {
+      if (initialSampleTemplate) {
         setData(normalizeTheaterData(initialSampleTemplate.data));
         setPresets(normalizeCharacterPresets(initialSampleTemplate.presets));
+        setSelectedTemplateId(initialSampleTemplate.id);
+        setSelectedTemplateName(initialSampleTemplate.name);
       } else {
         setData(getInitialDefaultData());
         setPresets(normalizeCharacterPresets(sampleLibrary.presets));
+        setSelectedTemplateId(null);
+        setSelectedTemplateName("");
       }
       setTemplates(sampleTemplates.map(summarizeTemplate));
       setTrashedTemplates([]);
       setActivityLog([]);
-      setTemplatesMessage(draft ? "000000 마지막 작업 초안을 불러왔습니다." : "000000은 읽기 전용 샘플 코드입니다. 1번 템플릿을 불러왔습니다.");
+      setTemplatesMessage("000000은 읽기 전용 샘플 코드입니다. 1번 템플릿을 불러왔습니다.");
       setCharacterPresetLibraryMeta({ updatedAt: sampleLibrary.updatedAt, bytes: getJsonByteLength(sampleLibrary) });
       setRoomStorageUsage({
         characterLibraryBytes: getJsonByteLength(sampleLibrary),
@@ -2938,15 +2998,19 @@ export default function TheaterToolBuilder() {
     let cancelled = false;
     setTemplatesLoading(true);
     setTemplatesMessage("템플릿을 불러오는 중입니다.");
-    Promise.all([requestTemplates("GET", roomCode), requestImageUsage(roomCode)])
+    Promise.all([requestTemplates("GET", roomCode, undefined, buildTemplateRequestOptions()), requestImageUsage(roomCode)])
       .then(async ([{ templates: nextTemplates, trashedTemplates: nextTrashedTemplates, activityLog: nextActivityLog, characterPresetLibraryMeta: nextLibraryMeta, usage }, nextImageUsage]) => {
         if (cancelled) return;
         const draft = loadRoomDraft(roomCode);
-        setTemplates(nextTemplates);
-        setTrashedTemplates(nextTrashedTemplates);
-        setActivityLog(nextActivityLog);
-        setCharacterPresetLibraryMeta(nextLibraryMeta);
-        setRoomStorageUsage(usage);
+        applyTemplatesPayload({
+          templates: nextTemplates,
+          trashedTemplates: nextTrashedTemplates,
+          activityLog: nextActivityLog,
+          characterPresetLibraryMeta: nextLibraryMeta,
+          usage
+        });
+        setSelectedTemplateId(null);
+        setSelectedTemplateName("");
         setImageStorageUsage(nextImageUsage);
         setCharacterLibraryMessage("");
         setHistory([]);
@@ -2966,6 +3030,8 @@ export default function TheaterToolBuilder() {
           if (firstTemplate) {
             setData(normalizeTheaterData(hydrateDataImages(firstTemplate.data)));
             setPresets(normalizeCharacterPresets(hydratePresetImages(firstTemplate.presets)));
+            setSelectedTemplateId(firstTemplate.id);
+            setSelectedTemplateName(firstTemplate.name);
             setTemplatesMessage("1번 템플릿을 불러왔습니다.");
             hydratedRoomRef.current = roomCode;
             return;
@@ -2986,6 +3052,8 @@ export default function TheaterToolBuilder() {
         setTemplates([]);
         setTrashedTemplates([]);
         setActivityLog([]);
+        setSelectedTemplateId(null);
+        setSelectedTemplateName("");
         setCharacterPresetLibraryMeta(null);
         setRoomStorageUsage(null);
         setImageStorageUsage(null);
@@ -3015,7 +3083,7 @@ export default function TheaterToolBuilder() {
 
   useEffect(() => {
     const roomCode = normalizeRoomCode(activeRoomCode);
-    if (!roomCode || hydratedRoomRef.current !== roomCode) return;
+    if (!roomCode || hydratedRoomRef.current !== roomCode || isPublicSampleRoom(roomCode)) return;
     const timeoutId = window.setTimeout(() => {
       saveRoomDraft(roomCode, data, presets);
     }, 350);
@@ -3253,10 +3321,36 @@ export default function TheaterToolBuilder() {
     setTemplates([]);
     setTrashedTemplates([]);
     setActivityLog([]);
+    setSelectedTemplateId(null);
+    setSelectedTemplateName("");
     setTemplatesMessage("");
     setCharacterPresetLibraryMeta(null);
     setRoomStorageUsage(null);
     setCharacterLibraryMessage("");
+  };
+
+  const toggleTemplateListExpanded = async () => {
+    const next = !isTemplateListExpanded;
+    setIsTemplateListExpanded(next);
+    const roomCode = normalizeRoomCode(activeRoomCode);
+    if (!roomCode || isPublicSampleRoom(roomCode)) return;
+    try {
+      await refreshTemplateSidebar(roomCode, { includeAllTemplates: next });
+    } catch (error) {
+      setTemplatesMessage(error instanceof Error ? error.message : "템플릿 목록을 불러오지 못했습니다.");
+    }
+  };
+
+  const toggleTrashExpanded = async () => {
+    const next = !isTrashExpanded;
+    setIsTrashExpanded(next);
+    const roomCode = normalizeRoomCode(activeRoomCode);
+    if (!roomCode || isPublicSampleRoom(roomCode)) return;
+    try {
+      await refreshTemplateSidebar(roomCode, { includeTrash: next });
+    } catch (error) {
+      setTemplatesMessage(error instanceof Error ? error.message : "휴지통을 불러오지 못했습니다.");
+    }
   };
 
   const saveCurrentTemplate = async () => {
@@ -3291,12 +3385,8 @@ export default function TheaterToolBuilder() {
     setTemplatesLoading(true);
     setTemplatesMessage("템플릿을 저장하는 중입니다.");
     try {
-      const { templates: nextTemplates, trashedTemplates: nextTrashedTemplates, activityLog: nextActivityLog, characterPresetLibraryMeta: nextLibraryMeta, usage } = await requestTemplates("POST", roomCode, { template: nextTemplate });
-      setTemplates(nextTemplates);
-      setTrashedTemplates(nextTrashedTemplates);
-      setActivityLog(nextActivityLog);
-      setCharacterPresetLibraryMeta(nextLibraryMeta);
-      setRoomStorageUsage(usage);
+      const payload = await requestTemplates("POST", roomCode, { template: nextTemplate }, buildTemplateRequestOptions());
+      applyTemplatesPayload(payload);
       await refreshImageStorageUsage(roomCode);
       setTemplatesMessage("저장했습니다.");
     } catch (saveError) {
@@ -3306,7 +3396,7 @@ export default function TheaterToolBuilder() {
     }
   };
 
-  const saveCurrentTemplateWithImages = async () => {
+  const saveCurrentTemplateWithImages = async (mode: "create" | "update" = "create") => {
     const roomCode = normalizeRoomCode(activeRoomCode);
     const error = validateRoomCode(roomCode);
     if (error) {
@@ -3322,17 +3412,27 @@ export default function TheaterToolBuilder() {
       return;
     }
 
-    const name = window.prompt("저장할 템플릿 이름을 입력하세요.", getDefaultTemplateName(data));
+    const isUpdate = mode === "update" && Boolean(selectedTemplateId);
+    if (mode === "update" && !selectedTemplateId) {
+      setTemplatesMessage("먼저 템플릿을 불러오거나 새 템플릿으로 저장한 뒤 덮어쓰기를 사용할 수 있습니다.");
+      return;
+    }
+
+    const name = window.prompt(
+      isUpdate ? "덮어쓸 템플릿 이름을 확인하세요." : "저장할 템플릿 이름을 입력하세요.",
+      isUpdate ? selectedTemplateName || getDefaultTemplateName(data) : getDefaultTemplateName(data)
+    );
     if (!name?.trim()) return;
 
     setTemplatesLoading(true);
-    setTemplatesMessage("이미지를 정리하고 템플릿을 저장하는 중입니다.");
+    setTemplatesMessage(isUpdate ? "이미지를 정리하고 템플릿을 덮어쓰는 중입니다." : "이미지를 정리하고 템플릿을 저장하는 중입니다.");
     try {
       const upload = createLimitedImageUploader(roomCode);
       const [remoteData, remotePresets] = await Promise.all([prepareDataForRemote(data, roomCode, upload), preparePresetsForRemote(presets, roomCode, upload)]);
+      const nextName = name.trim();
       const nextTemplate: SavedTemplate = {
-        id: makeId(),
-        name: name.trim(),
+        id: isUpdate ? selectedTemplateId! : makeId(),
+        name: nextName,
         createdAt: new Date().toISOString(),
         data: remoteData,
         presets: remotePresets
@@ -3342,16 +3442,14 @@ export default function TheaterToolBuilder() {
         setTemplatesMessage(`현재 회차가 ${formatBytes(currentTemplateLimitBytes)}를 넘어서 저장할 수 없습니다. 이미지나 프리셋을 줄여주세요.`);
         return;
       }
-      const { templates: nextTemplates, trashedTemplates: nextTrashedTemplates, activityLog: nextActivityLog, characterPresetLibraryMeta: nextLibraryMeta, usage } = await requestTemplates("POST", roomCode, { template: nextTemplate });
+      const payload = await requestTemplates("POST", roomCode, { template: nextTemplate }, buildTemplateRequestOptions());
       setData(normalizeTheaterData(hydrateDataImages(remoteData)));
       setPresets(normalizeCharacterPresets(hydratePresetImages(remotePresets)));
-      setTemplates(nextTemplates);
-      setTrashedTemplates(nextTrashedTemplates);
-      setActivityLog(nextActivityLog);
-      setCharacterPresetLibraryMeta(nextLibraryMeta);
-      setRoomStorageUsage(usage);
+      setSelectedTemplateId(nextTemplate.id);
+      setSelectedTemplateName(nextName);
+      applyTemplatesPayload(payload);
       await refreshImageStorageUsage(roomCode);
-      setTemplatesMessage("저장했습니다.");
+      setTemplatesMessage(isUpdate ? "덮어써서 저장했습니다." : "저장했습니다.");
     } catch (saveError) {
       setTemplatesMessage(saveError instanceof Error ? saveError.message : "템플릿 저장에 실패했습니다.");
     } finally {
@@ -3366,6 +3464,8 @@ export default function TheaterToolBuilder() {
       if (!sampleTemplate) return;
       commitData(normalizeTheaterData(sampleTemplate.data));
       setPresets(normalizeCharacterPresets(sampleTemplate.presets));
+      setSelectedTemplateId(sampleTemplate.id);
+      setSelectedTemplateName(sampleTemplate.name);
       return;
     }
 
@@ -3379,6 +3479,8 @@ export default function TheaterToolBuilder() {
       }
       commitData(normalizeTheaterData(hydrateDataImages(loadedTemplate.data)));
       setPresets(normalizeCharacterPresets(hydratePresetImages(loadedTemplate.presets)));
+      setSelectedTemplateId(loadedTemplate.id);
+      setSelectedTemplateName(loadedTemplate.name);
       setTemplatesMessage("");
     } catch (loadError) {
       setTemplatesMessage(loadError instanceof Error ? loadError.message : "템플릿 불러오기에 실패했습니다.");
@@ -3397,14 +3499,14 @@ export default function TheaterToolBuilder() {
     setTemplatesLoading(true);
     setTemplatesMessage("템플릿을 삭제하는 중입니다.");
     try {
-      const { templates: nextTemplates, trashedTemplates: nextTrashedTemplates, activityLog: nextActivityLog, characterPresetLibraryMeta: nextLibraryMeta, usage } = await requestTemplates("DELETE", roomCode, { templateId });
-      setTemplates(nextTemplates);
-      setTrashedTemplates(nextTrashedTemplates);
-      setActivityLog(nextActivityLog);
-      setCharacterPresetLibraryMeta(nextLibraryMeta);
-      setRoomStorageUsage(usage);
+      const payload = await requestTemplates("DELETE", roomCode, { templateId }, buildTemplateRequestOptions());
+      applyTemplatesPayload(payload);
+      if (selectedTemplateId === templateId) {
+        setSelectedTemplateId(null);
+        setSelectedTemplateName("");
+      }
       await refreshImageStorageUsage(roomCode);
-      setTemplatesMessage(nextTemplates.length ? "삭제했습니다." : "이 접속코드에는 아직 저장된 템플릿이 없습니다.");
+      setTemplatesMessage(payload.templates.length ? "삭제했습니다." : "이 접속코드에는 아직 저장된 템플릿이 없습니다.");
     } catch (deleteError) {
       setTemplatesMessage(deleteError instanceof Error ? deleteError.message : "템플릿 삭제에 실패했습니다.");
     } finally {
@@ -3421,12 +3523,8 @@ export default function TheaterToolBuilder() {
     setTemplatesLoading(true);
     setTemplatesMessage("템플릿을 복구하는 중입니다.");
     try {
-      const { templates: nextTemplates, trashedTemplates: nextTrashedTemplates, activityLog: nextActivityLog, characterPresetLibraryMeta: nextLibraryMeta, usage } = await requestTemplates("POST", roomCode, { restoreTemplateId: templateId });
-      setTemplates(nextTemplates);
-      setTrashedTemplates(nextTrashedTemplates);
-      setActivityLog(nextActivityLog);
-      setCharacterPresetLibraryMeta(nextLibraryMeta);
-      setRoomStorageUsage(usage);
+      const payload = await requestTemplates("POST", roomCode, { restoreTemplateId: templateId }, buildTemplateRequestOptions());
+      applyTemplatesPayload(payload);
       await refreshImageStorageUsage(roomCode);
       setTemplatesMessage("복구했습니다.");
     } catch (restoreError) {
@@ -3446,12 +3544,8 @@ export default function TheaterToolBuilder() {
     setTemplatesLoading(true);
     setTemplatesMessage("이전 버전으로 되돌리는 중입니다.");
     try {
-      const { templates: nextTemplates, trashedTemplates: nextTrashedTemplates, activityLog: nextActivityLog, characterPresetLibraryMeta: nextLibraryMeta, usage } = await requestTemplates("POST", roomCode, { restoreVersionTemplateId: templateId });
-      setTemplates(nextTemplates);
-      setTrashedTemplates(nextTrashedTemplates);
-      setActivityLog(nextActivityLog);
-      setCharacterPresetLibraryMeta(nextLibraryMeta);
-      setRoomStorageUsage(usage);
+      const payload = await requestTemplates("POST", roomCode, { restoreVersionTemplateId: templateId }, buildTemplateRequestOptions());
+      applyTemplatesPayload(payload);
       await refreshImageStorageUsage(roomCode);
       setTemplatesMessage("이전 버전으로 되돌렸습니다.");
     } catch (restoreError) {
@@ -3483,14 +3577,11 @@ export default function TheaterToolBuilder() {
     setCharacterLibraryLoading(true);
     setCharacterLibraryMessage("캐릭터 프리셋을 저장하는 중입니다.");
     try {
-      const { templates: nextTemplates, trashedTemplates: nextTrashedTemplates, activityLog: nextActivityLog, characterPresetLibraryMeta: savedLibraryMeta, usage } = await requestTemplates("POST", roomCode, {
+      const payload = await requestTemplates("POST", roomCode, {
         characterPresetLibrary: nextLibrary
-      });
-      setTemplates(nextTemplates);
-      setTrashedTemplates(nextTrashedTemplates);
-      setActivityLog(nextActivityLog);
-      setCharacterPresetLibraryMeta(savedLibraryMeta ?? { updatedAt: nextLibrary.updatedAt, bytes: getJsonByteLength(nextLibrary) });
-      setRoomStorageUsage(usage);
+      }, buildTemplateRequestOptions());
+      applyTemplatesPayload(payload);
+      setCharacterPresetLibraryMeta(payload.characterPresetLibraryMeta ?? { updatedAt: nextLibrary.updatedAt, bytes: getJsonByteLength(nextLibrary) });
       await refreshImageStorageUsage(roomCode);
       setCharacterLibraryMessage("캐릭터 프리셋을 저장했습니다.");
     } catch (saveError) {
@@ -3523,14 +3614,11 @@ export default function TheaterToolBuilder() {
         setCharacterLibraryMessage(`캐릭터 프리셋 사용량이 ${formatBytes(CHARACTER_LIBRARY_LIMIT_BYTES)}를 넘었습니다. 이미지를 줄이거나 프리셋을 삭제하세요.`);
         return;
       }
-      const { templates: nextTemplates, trashedTemplates: nextTrashedTemplates, activityLog: nextActivityLog, characterPresetLibraryMeta: savedLibraryMeta, usage } = await requestTemplates("POST", roomCode, {
+      const payload = await requestTemplates("POST", roomCode, {
         characterPresetLibrary: nextLibrary
-      });
-      setTemplates(nextTemplates);
-      setTrashedTemplates(nextTrashedTemplates);
-      setActivityLog(nextActivityLog);
-      setCharacterPresetLibraryMeta(savedLibraryMeta ?? { updatedAt: nextLibrary.updatedAt, bytes: getJsonByteLength(nextLibrary) });
-      setRoomStorageUsage(usage);
+      }, buildTemplateRequestOptions());
+      applyTemplatesPayload(payload);
+      setCharacterPresetLibraryMeta(payload.characterPresetLibraryMeta ?? { updatedAt: nextLibrary.updatedAt, bytes: getJsonByteLength(nextLibrary) });
       await refreshImageStorageUsage(roomCode);
       setCharacterLibraryMessage(silent ? "프리셋 변경을 저장했습니다." : "캐릭터 프리셋을 저장했습니다.");
     } catch (saveError) {
@@ -3560,20 +3648,18 @@ export default function TheaterToolBuilder() {
     setCharacterLibraryLoading(true);
     setCharacterLibraryMessage("캐릭터 프리셋을 불러오는 중입니다.");
     try {
-      const { templates: nextTemplates, trashedTemplates: nextTrashedTemplates, activityLog: nextActivityLog, characterPresetLibrary: savedLibrary, characterPresetLibraryMeta: savedLibraryMeta, usage } = await requestTemplates("GET", roomCode, undefined, {
+      const payload = await requestTemplates("GET", roomCode, undefined, {
+        ...buildTemplateRequestOptions(),
         library: "1"
       });
-      setTemplates(nextTemplates);
-      setTrashedTemplates(nextTrashedTemplates);
-      setActivityLog(nextActivityLog);
-      setCharacterPresetLibraryMeta(savedLibraryMeta);
-      setRoomStorageUsage(usage);
+      applyTemplatesPayload(payload);
+      setCharacterPresetLibraryMeta(payload.characterPresetLibraryMeta);
       await refreshImageStorageUsage(roomCode);
-      if (!savedLibrary) {
+      if (!payload.characterPresetLibrary) {
         setCharacterLibraryMessage("이 접속코드에는 아직 저장된 캐릭터 프리셋이 없습니다.");
         return;
       }
-      setPresets(normalizeCharacterPresets(hydratePresetImages(savedLibrary.presets)));
+      setPresets(normalizeCharacterPresets(hydratePresetImages(payload.characterPresetLibrary.presets)));
       setCharacterLibraryMessage("캐릭터 프리셋을 불러왔습니다.");
     } catch (loadError) {
       setCharacterLibraryMessage(loadError instanceof Error ? loadError.message : "캐릭터 프리셋 불러오기에 실패했습니다.");
@@ -3769,10 +3855,22 @@ export default function TheaterToolBuilder() {
               ) : (
                 <div className="emptyTemplates">접속코드를 입력하면 공유 템플릿 저장소가 열립니다.</div>
               )}
-              <button type="button" onClick={saveCurrentTemplateWithImages} disabled={!activeRoomCode || templatesLoading || isActivePublicRoom || isCurrentTemplateTooLarge}>
-                <Plus size={15} />
-                현재 회차 저장
-              </button>
+              <div className="templateActionGrid">
+                <button type="button" onClick={() => saveCurrentTemplateWithImages()} disabled={!activeRoomCode || templatesLoading || isActivePublicRoom || isCurrentTemplateTooLarge}>
+                  <Plus size={15} />
+                  새 템플릿 저장
+                </button>
+                <button
+                  type="button"
+                  onClick={() => saveCurrentTemplateWithImages("update")}
+                  disabled={!activeRoomCode || templatesLoading || isActivePublicRoom || isCurrentTemplateTooLarge || !selectedTemplateId}
+                  title={selectedTemplateId ? `${selectedTemplateName || "현재 템플릿"}에 덮어쓰기` : "먼저 템플릿을 불러오거나 새로 저장하세요."}
+                >
+                  <FileJson size={15} />
+                  현재 템플릿 덮어쓰기
+                </button>
+              </div>
+              {selectedTemplateId && !isActivePublicRoom ? <div className="emptyTemplates">편집 중: {selectedTemplateName || "이름 없는 템플릿"}</div> : null}
               <div className={`usageBox${isCurrentTemplateTooLarge ? " warning" : ""}`}>
                 <div className="usageText">
                   <span>현재 회차</span>
@@ -3826,6 +3924,17 @@ export default function TheaterToolBuilder() {
                 </div>
               ) : null}
               {templatesMessage ? <div className="templateMessage">{templatesMessage}</div> : null}
+              <div className="sectionHeaderRow">
+                <div className="usageText">
+                  <span>최근 템플릿</span>
+                  <strong>{roomStorageUsage?.templatesCount ?? templates.length}개</strong>
+                </div>
+                {hiddenTemplateCount > 0 ? (
+                  <button type="button" className="inlineToggleButton" onClick={toggleTemplateListExpanded} disabled={templatesLoading || isActivePublicRoom}>
+                    {isTemplateListExpanded ? "접기" : `... ${hiddenTemplateCount}개 더 보기`}
+                  </button>
+                ) : null}
+              </div>
               {activeRoomCode && templates.length === 0 && !templatesLoading ? (
                 <div className="emptyTemplates">저장된 템플릿 없음</div>
               ) : (
@@ -3850,27 +3959,38 @@ export default function TheaterToolBuilder() {
                   ))}
                 </div>
               )}
-              {trashedTemplates.length ? (
+              {(roomStorageUsage?.trashedTemplatesCount ?? trashedTemplates.length) ? (
                 <div className="trashBox">
-                  <div className="usageText">
-                    <span>휴지통</span>
-                    <strong>{trashedTemplates.length}개</strong>
+                  <div className="sectionHeaderRow">
+                    <div className="usageText">
+                      <span>휴지통</span>
+                      <strong>{roomStorageUsage?.trashedTemplatesCount ?? trashedTemplates.length}개</strong>
+                    </div>
+                    <button type="button" className="inlineToggleButton" onClick={toggleTrashExpanded} disabled={templatesLoading || isActivePublicRoom}>
+                      {isTrashExpanded ? "접기" : hiddenTrashCount > 0 ? `펼치기 (${hiddenTrashCount}개 숨김)` : "펼치기"}
+                    </button>
                   </div>
-                  <div className="templateList">
-                    {trashedTemplates.slice(0, 5).map((template) => (
-                      <div className="templateItem" key={`trash-${template.id}`}>
-                        <button type="button" className="templateLoad" onClick={() => restoreTemplate(template.id)} disabled={templatesLoading || isActivePublicRoom} title="템플릿 복구">
-                          <span>{template.name}</span>
-                          <small>
-                            삭제 {template.deletedAt ? new Date(template.deletedAt).toLocaleString() : ""}
-                          </small>
-                        </button>
-                        <button type="button" className="iconButton" onClick={() => restoreTemplate(template.id)} aria-label="템플릿 복구" disabled={templatesLoading || isActivePublicRoom}>
-                          <Undo2 size={15} />
-                        </button>
+                  {isTrashExpanded ? (
+                    trashedTemplates.length ? (
+                      <div className="templateList">
+                        {trashedTemplates.map((template) => (
+                          <div className="templateItem" key={`trash-${template.id}`}>
+                            <button type="button" className="templateLoad" onClick={() => restoreTemplate(template.id)} disabled={templatesLoading || isActivePublicRoom} title="템플릿 복구">
+                              <span>{template.name}</span>
+                              <small>
+                                삭제 {template.deletedAt ? new Date(template.deletedAt).toLocaleString() : ""}
+                              </small>
+                            </button>
+                            <button type="button" className="iconButton" onClick={() => restoreTemplate(template.id)} aria-label="템플릿 복구" disabled={templatesLoading || isActivePublicRoom}>
+                              <Undo2 size={15} />
+                            </button>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                    ) : (
+                      <div className="emptyTemplates">휴지통이 비어 있습니다.</div>
+                    )
+                  ) : null}
                 </div>
               ) : null}
               {activityLog.length ? (
@@ -3879,13 +3999,15 @@ export default function TheaterToolBuilder() {
                     <span>최근 활동</span>
                     <strong>{activityLog.length}</strong>
                   </div>
-                  {activityLog.slice(0, 6).map((entry) => (
-                    <div className="activityItem" key={entry.id}>
-                      <span>{formatActivityType(entry.type)}</span>
-                      <strong>{entry.targetName}</strong>
-                      <small>{new Date(entry.at).toLocaleString()}</small>
-                    </div>
-                  ))}
+                  <div className={`activityList${activityLog.length > 5 ? " scrollable" : ""}`}>
+                    {activityLog.map((entry) => (
+                      <div className="activityItem" key={entry.id}>
+                        <span>{formatActivityType(entry.type)}</span>
+                        <strong>{entry.targetName}</strong>
+                        <small>{new Date(entry.at).toLocaleString()}</small>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ) : null}
             </section>
@@ -4163,12 +4285,15 @@ textarea { resize: vertical; line-height: 1.6; }
 .roomStatus { display: grid; grid-template-columns: minmax(0, 1fr) 58px; gap: 7px; align-items: center; padding: 8px; border: 1px solid var(--app-border); border-radius: 8px; background: var(--app-surface-2); font-size: 12px; color: var(--app-dim); }
 .roomStatus span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .roomStatus button { min-height: 28px; padding: 3px 7px; font-size: 12px; }
+.templateActionGrid { display: grid; grid-template-columns: 1fr; gap: 8px; }
 .templateMessage { padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, var(--app-accent) 12%, transparent); color: var(--app-accent-soft); font-size: 12px; line-height: 1.5; }
 .usageBox { display: grid; gap: 6px; padding: 8px; border: 1px solid var(--app-border); border-radius: 8px; background: var(--app-surface-2); }
 .nestedUsage { margin-top: 2px; padding: 7px; background: var(--app-surface-3); }
 .usageText { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--app-dim); font-size: 12px; line-height: 1.4; }
 .usageText strong { color: var(--app-accent-soft); font-size: 12px; white-space: nowrap; }
 .usageText.subtle strong { color: var(--app-dim); font-weight: 600; }
+.sectionHeaderRow { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.inlineToggleButton { min-height: 28px; padding: 4px 8px; font-size: 12px; white-space: nowrap; }
 .usageTrack { height: 6px; border-radius: 999px; overflow: hidden; background: var(--app-control-2); border: 1px solid var(--app-border); }
 .usageTrack span { display: block; height: 100%; max-width: 100%; border-radius: inherit; background: var(--app-accent); }
 .usageBox.warning { border-color: #e37a7a; background: color-mix(in srgb, var(--app-surface-2) 80%, #e37a7a 20%); }
@@ -4180,6 +4305,8 @@ textarea { resize: vertical; line-height: 1.6; }
 .templateLoad span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .templateLoad small { color: var(--app-faint); font-size: 11px; font-weight: 400; }
 .trashBox, .activityBox { display: grid; gap: 7px; padding: 8px; border: 1px dashed var(--app-border-2); border-radius: 8px; background: var(--app-surface-2); }
+.activityList { display: grid; gap: 7px; }
+.activityList.scrollable { max-height: 228px; overflow-y: auto; padding-right: 4px; }
 .activityItem { display: grid; grid-template-columns: 42px minmax(0, 1fr); gap: 4px 7px; align-items: center; color: var(--app-dim); font-size: 12px; }
 .activityItem strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--app-accent-soft); font-size: 12px; }
 .activityItem small { grid-column: 2; color: var(--app-faint); font-size: 11px; }

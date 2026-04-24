@@ -8,7 +8,7 @@ const MAX_TEMPLATES_PER_ROOM = 50;
 const MAX_TEMPLATE_BYTES = 1_000_000;
 const MAX_CHARACTER_LIBRARY_BYTES = 5_000_000;
 const MAX_TEMPLATE_VERSIONS = 5;
-const MAX_ACTIVITY_LOGS = 40;
+const MAX_ACTIVITY_LOGS = 10;
 const TRASH_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
 const json = (status, body) =>
@@ -195,20 +195,24 @@ async function cleanupExpiredTrash(store, roomCode) {
   );
 }
 
-const roomPayload = async (store, roomCode) => {
+const roomPayload = async (store, roomCode, options = {}) => {
+  const templateLimit = Number.parseInt(String(options.templateLimit ?? "0"), 10);
+  const includeTrash = options.includeTrash !== false;
+  const includeActivity = options.includeActivity !== false;
   const templates = await readTemplates(store, roomCode);
-  const trashedTemplates = await readTrash(store, roomCode);
+  const visibleTemplates = Number.isFinite(templateLimit) && templateLimit > 0 ? templates.slice(0, templateLimit) : templates;
+  const trashedTemplates = includeTrash ? await readTrash(store, roomCode) : [];
   const characterPresetLibrary = await readCharacterLibrary(store, roomCode);
-  const activityLog = await readActivityLog(store, roomCode);
+  const activityLog = includeActivity ? await readActivityLog(store, roomCode) : [];
   const versionCounts = new Map(
     await Promise.all(
-      templates.map(async (template) => {
+      visibleTemplates.map(async (template) => {
         const versions = await readVersionRecords(store, roomCode, template.id);
         return [template.id, versions.length];
       })
     )
   );
-  const templateSummaries = templates.map((template) => summarizeTemplate(template, { versionCount: versionCounts.get(template.id) ?? 0 }));
+  const templateSummaries = visibleTemplates.map((template) => summarizeTemplate(template, { versionCount: versionCounts.get(template.id) ?? 0 }));
 
   return {
     templates: templateSummaries,
@@ -218,9 +222,11 @@ const roomPayload = async (store, roomCode) => {
     usage: {
       characterLibraryBytes: characterPresetLibrary ? jsonByteLength(characterPresetLibrary) : 0,
       characterLibraryLimitBytes: MAX_CHARACTER_LIBRARY_BYTES,
-      templatesBytes: templateSummaries.reduce((total, template) => total + template.bytes, 0),
+      templatesBytes: templates.reduce((total, template) => total + jsonByteLength(template), 0),
       templatesCount: templates.length,
-      trashedTemplatesCount: trashedTemplates.length,
+      trashedTemplatesCount: includeTrash
+        ? trashedTemplates.length
+        : ((await cleanupExpiredTrash(store, roomCode)), (await store.list({ prefix: trashPrefix(roomCode) })).blobs.length),
       maxTemplates: MAX_TEMPLATES_PER_ROOM,
       maxTemplateBytes: MAX_TEMPLATE_BYTES
     }
@@ -239,6 +245,11 @@ export default async (request) => {
     if (roomError) return json(400, { error: roomError });
 
     if (request.method === "GET") {
+      const requestOptions = {
+        templateLimit: url.searchParams.get("templateLimit") || "0",
+        includeTrash: url.searchParams.get("includeTrash") !== "0",
+        includeActivity: url.searchParams.get("includeActivity") !== "0"
+      };
       const templateId = url.searchParams.get("templateId");
       if (templateId) {
         const template = await readTemplate(store, roomCode, templateId);
@@ -261,13 +272,18 @@ export default async (request) => {
 
       if (url.searchParams.get("library") === "1") {
         const characterPresetLibrary = await readCharacterLibrary(store, roomCode);
-        return json(200, { characterPresetLibrary, ...(await roomPayload(store, roomCode)) });
+        return json(200, { characterPresetLibrary, ...(await roomPayload(store, roomCode, requestOptions)) });
       }
 
-      return json(200, await roomPayload(store, roomCode));
+      return json(200, await roomPayload(store, roomCode, requestOptions));
     }
 
     const body = await request.json();
+    const requestOptions = {
+      templateLimit: body?.requestOptions?.templateLimit || "0",
+      includeTrash: body?.requestOptions?.includeTrash !== "0",
+      includeActivity: body?.requestOptions?.includeActivity !== "0"
+    };
 
     if (request.method === "POST") {
       const restoreTemplateId = String(body.restoreTemplateId || "");
@@ -283,7 +299,7 @@ export default async (request) => {
         await store.setJSON(templateKey(roomCode, restoreTemplateId), record.template);
         await store.delete(trashKey(roomCode, restoreTemplateId));
         await appendActivity(store, roomCode, "restore", record.template.name);
-        return json(200, await roomPayload(store, roomCode));
+        return json(200, await roomPayload(store, roomCode, requestOptions));
       }
 
       const restoreVersionTemplateId = String(body.restoreVersionTemplateId || "");
@@ -297,7 +313,7 @@ export default async (request) => {
         if (current) await saveTemplateVersion(store, roomCode, current);
         await store.setJSON(templateKey(roomCode, restoreVersionTemplateId), record.template);
         await appendActivity(store, roomCode, "revert", record.template.name);
-        return json(200, await roomPayload(store, roomCode));
+        return json(200, await roomPayload(store, roomCode, requestOptions));
       }
 
       const characterPresetLibrary = body.characterPresetLibrary;
@@ -313,7 +329,7 @@ export default async (request) => {
 
         await store.setJSON(characterLibraryKey(roomCode), characterPresetLibrary);
         await appendActivity(store, roomCode, "saveLibrary", "캐릭터 프리셋");
-        return json(200, await roomPayload(store, roomCode));
+        return json(200, await roomPayload(store, roomCode, requestOptions));
       }
 
       const template = body.template;
@@ -335,7 +351,7 @@ export default async (request) => {
       await store.delete(trashKey(roomCode, template.id));
       await store.setJSON(templateKey(roomCode, template.id), template);
       await appendActivity(store, roomCode, isUpdate ? "update" : "create", template.name);
-      return json(200, await roomPayload(store, roomCode));
+      return json(200, await roomPayload(store, roomCode, requestOptions));
     }
 
     if (request.method === "DELETE") {
@@ -353,7 +369,7 @@ export default async (request) => {
       });
       await store.delete(templateKey(roomCode, templateId));
       await appendActivity(store, roomCode, "trash", template.name);
-      return json(200, await roomPayload(store, roomCode));
+      return json(200, await roomPayload(store, roomCode, requestOptions));
     }
 
     return json(405, { error: "지원하지 않는 요청입니다." });
