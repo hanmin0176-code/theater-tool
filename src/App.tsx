@@ -1,4 +1,4 @@
-﻿import React, { ChangeEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, { ChangeEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDown,
   ArrowUp,
@@ -152,8 +152,23 @@ type SceneCardData = {
 
 type PageBlock = ModuleBlock | SceneCardData;
 
+type LabelFontSizes = {
+  postTag: number;
+  sceneNumber: number;
+  sceneImageLabel: number;
+  avatarFallback: number;
+  characterName: number;
+  blockLabel: number;
+  sideTitle: number;
+};
+
+type FontPresetId = "pc" | "mobile" | "mixed";
+
 type TheaterData = {
   blocks: PageBlock[];
+  fontPreset?: FontPresetId;
+  labelFontSizes?: Partial<LabelFontSizes>;
+  portraitSize?: number;
   labelFontOffset?: number;
 };
 
@@ -271,6 +286,7 @@ const ROOM_IMAGE_LIMIT_BYTES = 100_000_000;
 const PROFILE_IMAGE_OPTIONS = { maxDimension: 512, targetBytes: 150_000 };
 const SCENE_IMAGE_OPTIONS = { maxDimension: 1200, targetBytes: 400_000 };
 const EXPORT_CONTENT_WIDTH = 900;
+const MAX_CAPTURE_CANVAS_HEIGHT = 14_000;
 
 const THEME_OPTIONS: Array<{ id: ThemeMode; name: string; colors: [string, string] }> = [
   { id: "blackGold", name: "블랙/골드", colors: ["#12110f", "#c8a96e"] },
@@ -298,8 +314,75 @@ const SCENE_BLOCK_LABELS: Record<SceneBlockType, string> = {
   reference: "참고 데이터"
 };
 
+const DEFAULT_FONT_PRESET_ID: FontPresetId = "mixed";
+
+const FONT_PRESET_OPTIONS: Array<{ id: FontPresetId; label: string }> = [
+  { id: "pc", label: "PC" },
+  { id: "mobile", label: "모바일" },
+  { id: "mixed", label: "혼합" }
+];
+
+const BASE_BODY_FONT_SIZE = 16;
+const BASE_TITLE_FONT_SIZE = 23;
+const BASE_SCENE_TITLE_FONT_SIZE = 15;
+const BASE_SCENE_DESC_FONT_SIZE = 15;
+const BASE_AFTERWORD_FONT_SIZE = 14;
+const BASE_TIKITAKA_FONT_SIZE = 15;
+const DEFAULT_PORTRAIT_SIZE = 74;
+const MIN_PORTRAIT_SIZE = 56;
+const MAX_PORTRAIT_SIZE = 120;
+
+const BASE_LABEL_FONT_SIZES: LabelFontSizes = {
+  postTag: 13,
+  sceneNumber: 13,
+  sceneImageLabel: 14,
+  avatarFallback: 15,
+  characterName: 12,
+  blockLabel: 12,
+  sideTitle: 12
+};
+
+const FONT_PRESETS: Record<FontPresetId, { bodyBonus: number; labelSizes: LabelFontSizes }> = {
+  pc: {
+    bodyBonus: 8,
+    labelSizes: {
+      postTag: 15,
+      sceneNumber: 15,
+      sceneImageLabel: 16,
+      avatarFallback: 17,
+      characterName: 14,
+      blockLabel: 14,
+      sideTitle: 14
+    }
+  },
+  mobile: {
+    bodyBonus: 11,
+    labelSizes: {
+      postTag: 17,
+      sceneNumber: 17,
+      sceneImageLabel: 18,
+      avatarFallback: 19,
+      characterName: 16,
+      blockLabel: 16,
+      sideTitle: 16
+    }
+  },
+  mixed: {
+    bodyBonus: 10,
+    labelSizes: {
+      postTag: 16,
+      sceneNumber: 16,
+      sceneImageLabel: 17,
+      avatarFallback: 18,
+      characterName: 15,
+      blockLabel: 15,
+      sideTitle: 15
+    }
+  }
+};
+
 const DEFAULT_TEXT_STYLE: TextStyle = {
-  fontSize: 16,
+  fontSize: BASE_BODY_FONT_SIZE + FONT_PRESETS[DEFAULT_FONT_PRESET_ID].bodyBonus,
   bold: false,
   italic: false
 };
@@ -308,28 +391,26 @@ const MIN_FONT_SIZE = 9;
 const MAX_FONT_SIZE = 48;
 
 const MODULE_DEFAULT_FONT_SIZES: Record<ModuleType, number> = {
-  title: 23,
-  subtitle: DEFAULT_TEXT_STYLE.fontSize ?? 16,
-  narration: DEFAULT_TEXT_STYLE.fontSize ?? 16
+  title: BASE_TITLE_FONT_SIZE + FONT_PRESETS[DEFAULT_FONT_PRESET_ID].bodyBonus,
+  subtitle: DEFAULT_TEXT_STYLE.fontSize ?? BASE_BODY_FONT_SIZE,
+  narration: DEFAULT_TEXT_STYLE.fontSize ?? BASE_BODY_FONT_SIZE
 };
 
 const SCENE_DEFAULT_FONT_SIZES = {
-  sceneTitle: 15,
-  sceneDesc: 15,
-  character: DEFAULT_TEXT_STYLE.fontSize ?? 16,
-  narration: DEFAULT_TEXT_STYLE.fontSize ?? 16,
-  afterword: 14,
-  tikitaka: 15
+  sceneTitle: BASE_SCENE_TITLE_FONT_SIZE + FONT_PRESETS[DEFAULT_FONT_PRESET_ID].bodyBonus,
+  sceneDesc: BASE_SCENE_DESC_FONT_SIZE + FONT_PRESETS[DEFAULT_FONT_PRESET_ID].bodyBonus,
+  character: DEFAULT_TEXT_STYLE.fontSize ?? BASE_BODY_FONT_SIZE,
+  narration: DEFAULT_TEXT_STYLE.fontSize ?? BASE_BODY_FONT_SIZE,
+  afterword: BASE_AFTERWORD_FONT_SIZE + FONT_PRESETS[DEFAULT_FONT_PRESET_ID].bodyBonus,
+  tikitaka: BASE_TIKITAKA_FONT_SIZE + FONT_PRESETS[DEFAULT_FONT_PRESET_ID].bodyBonus
 };
 
-const LABEL_FONT_SIZES = {
-  postTag: 13,
-  sceneNumber: 13,
-  sceneImageLabel: 14,
-  avatarFallback: 15,
-  characterName: 12,
-  blockLabel: 12,
-  sideTitle: 12
+const LABEL_FONT_SIZES: LabelFontSizes = {
+  ...FONT_PRESETS[DEFAULT_FONT_PRESET_ID].labelSizes
+};
+
+const LEGACY_LABEL_FONT_SIZES: LabelFontSizes = {
+  ...BASE_LABEL_FONT_SIZES
 };
 
 const MIN_LABEL_FONT_OFFSET = MIN_FONT_SIZE - Math.min(...Object.values(LABEL_FONT_SIZES));
@@ -345,6 +426,102 @@ function clampFontSize(value: number, fallback = DEFAULT_TEXT_STYLE.fontSize ?? 
 function clampLabelFontOffset(value: number) {
   const numeric = Number.isFinite(value) ? Math.round(value) : 0;
   return Math.min(MAX_LABEL_FONT_OFFSET, Math.max(MIN_LABEL_FONT_OFFSET, numeric));
+}
+
+function clampPortraitSize(value: number, fallback = DEFAULT_PORTRAIT_SIZE) {
+  const numeric = Number.isFinite(value) ? Math.round(value) : fallback;
+  return Math.min(MAX_PORTRAIT_SIZE, Math.max(MIN_PORTRAIT_SIZE, numeric));
+}
+
+function normalizeFontPresetId(value?: string): FontPresetId {
+  return value === "pc" || value === "mobile" || value === "mixed" ? value : DEFAULT_FONT_PRESET_ID;
+}
+
+function getBodyFontBonus(presetId: FontPresetId) {
+  return FONT_PRESETS[presetId].bodyBonus;
+}
+
+function getDefaultTextStyle(presetId: FontPresetId): TextStyle {
+  return {
+    fontSize: BASE_BODY_FONT_SIZE + getBodyFontBonus(presetId),
+    bold: false,
+    italic: false
+  };
+}
+
+function getModuleDefaultFontSizes(presetId: FontPresetId): Record<ModuleType, number> {
+  const bodySize = getDefaultTextStyle(presetId).fontSize ?? BASE_BODY_FONT_SIZE;
+  return {
+    title: BASE_TITLE_FONT_SIZE + getBodyFontBonus(presetId),
+    subtitle: bodySize,
+    narration: bodySize
+  };
+}
+
+function getSceneDefaultFontSizes(presetId: FontPresetId) {
+  const bodySize = getDefaultTextStyle(presetId).fontSize ?? BASE_BODY_FONT_SIZE;
+  return {
+    sceneTitle: BASE_SCENE_TITLE_FONT_SIZE + getBodyFontBonus(presetId),
+    sceneDesc: BASE_SCENE_DESC_FONT_SIZE + getBodyFontBonus(presetId),
+    character: bodySize,
+    narration: bodySize,
+    afterword: BASE_AFTERWORD_FONT_SIZE + getBodyFontBonus(presetId),
+    tikitaka: BASE_TIKITAKA_FONT_SIZE + getBodyFontBonus(presetId)
+  };
+}
+
+function cloneLabelFontSizes(source: LabelFontSizes): LabelFontSizes {
+  return {
+    postTag: source.postTag,
+    sceneNumber: source.sceneNumber,
+    sceneImageLabel: source.sceneImageLabel,
+    avatarFallback: source.avatarFallback,
+    characterName: source.characterName,
+    blockLabel: source.blockLabel,
+    sideTitle: source.sideTitle
+  };
+}
+
+function getDefaultLabelFontSizes(presetId: FontPresetId = DEFAULT_FONT_PRESET_ID): LabelFontSizes {
+  return cloneLabelFontSizes(FONT_PRESETS[presetId].labelSizes);
+}
+
+function shiftLabelFontSizesByDelta(sizes: LabelFontSizes, delta: number): LabelFontSizes {
+  return {
+    postTag: clampFontSize(sizes.postTag + delta, LABEL_FONT_SIZES.postTag),
+    sceneNumber: clampFontSize(sizes.sceneNumber + delta, LABEL_FONT_SIZES.sceneNumber),
+    sceneImageLabel: clampFontSize(sizes.sceneImageLabel + delta, LABEL_FONT_SIZES.sceneImageLabel),
+    avatarFallback: clampFontSize(sizes.avatarFallback + delta, LABEL_FONT_SIZES.avatarFallback),
+    characterName: clampFontSize(sizes.characterName + delta, LABEL_FONT_SIZES.characterName),
+    blockLabel: clampFontSize(sizes.blockLabel + delta, LABEL_FONT_SIZES.blockLabel),
+    sideTitle: clampFontSize(sizes.sideTitle + delta, LABEL_FONT_SIZES.sideTitle)
+  };
+}
+
+function getLegacyLabelFontSizes(offset: number): LabelFontSizes {
+  const safeOffset = clampLabelFontOffset(offset);
+  return {
+    postTag: clampFontSize(LEGACY_LABEL_FONT_SIZES.postTag + safeOffset, LEGACY_LABEL_FONT_SIZES.postTag),
+    sceneNumber: clampFontSize(LEGACY_LABEL_FONT_SIZES.sceneNumber + safeOffset, LEGACY_LABEL_FONT_SIZES.sceneNumber),
+    sceneImageLabel: clampFontSize(LEGACY_LABEL_FONT_SIZES.sceneImageLabel + safeOffset, LEGACY_LABEL_FONT_SIZES.sceneImageLabel),
+    avatarFallback: clampFontSize(LEGACY_LABEL_FONT_SIZES.avatarFallback + safeOffset, LEGACY_LABEL_FONT_SIZES.avatarFallback),
+    characterName: clampFontSize(LEGACY_LABEL_FONT_SIZES.characterName + safeOffset, LEGACY_LABEL_FONT_SIZES.characterName),
+    blockLabel: clampFontSize(LEGACY_LABEL_FONT_SIZES.blockLabel + safeOffset, LEGACY_LABEL_FONT_SIZES.blockLabel),
+    sideTitle: clampFontSize(LEGACY_LABEL_FONT_SIZES.sideTitle + safeOffset, LEGACY_LABEL_FONT_SIZES.sideTitle)
+  };
+}
+
+function normalizeLabelFontSizes(input?: Partial<LabelFontSizes>, legacyOffset?: number, presetId: FontPresetId = DEFAULT_FONT_PRESET_ID): LabelFontSizes {
+  const fallback = input ? getDefaultLabelFontSizes(presetId) : getLegacyLabelFontSizes(legacyOffset ?? 0);
+  return {
+    postTag: clampFontSize(input?.postTag ?? fallback.postTag, getDefaultLabelFontSizes(presetId).postTag),
+    sceneNumber: clampFontSize(input?.sceneNumber ?? fallback.sceneNumber, getDefaultLabelFontSizes(presetId).sceneNumber),
+    sceneImageLabel: clampFontSize(input?.sceneImageLabel ?? fallback.sceneImageLabel, getDefaultLabelFontSizes(presetId).sceneImageLabel),
+    avatarFallback: clampFontSize(input?.avatarFallback ?? fallback.avatarFallback, getDefaultLabelFontSizes(presetId).avatarFallback),
+    characterName: clampFontSize(input?.characterName ?? fallback.characterName, getDefaultLabelFontSizes(presetId).characterName),
+    blockLabel: clampFontSize(input?.blockLabel ?? fallback.blockLabel, getDefaultLabelFontSizes(presetId).blockLabel),
+    sideTitle: clampFontSize(input?.sideTitle ?? fallback.sideTitle, getDefaultLabelFontSizes(presetId).sideTitle)
+  };
 }
 
 const CHARACTER_PRESETS: CharacterPreset[] = [
@@ -1085,8 +1262,8 @@ body {
 .scene-desc { padding: 12px 16px; font-size: 15px; color: var(--text-dim); border-bottom: 1px solid var(--border); line-height: 1.7; white-space: pre-wrap; }
 .dialogue-block { padding: 8px 16px; display: flex; flex-direction: column; gap: 2px; }
 .dialogue-row, .narration-row { display: flex; gap: 15px; align-items: flex-start; padding: 16px; border-bottom: 1px solid rgba(255,255,255,0.03); }
-.char-portrait { flex-shrink: 0; width: 86px; display: flex; flex-direction: column; align-items: center; gap: 5px; }
-.avatar, .avatar-img { width: 74px; height: 74px; border-radius: 9999px; border: 3px solid var(--ring, var(--border)); background: #26231e; object-fit: cover; display: flex; align-items: center; justify-content: center; font-size: var(--font-avatar-fallback); font-weight: 700; text-align: center; padding: 4px; }
+.char-portrait { flex-shrink: 0; width: calc(var(--portrait-size, 74px) + 12px); display: flex; flex-direction: column; align-items: center; gap: 5px; }
+.avatar, .avatar-img { width: var(--portrait-size, 74px); height: var(--portrait-size, 74px); border-radius: 9999px; border: 3px solid var(--ring, var(--border)); background: #26231e; object-fit: cover; display: flex; align-items: center; justify-content: center; font-size: var(--font-avatar-fallback); font-weight: 700; text-align: center; padding: 4px; }
 .char-name { font-size: var(--font-character-name); color: var(--text-faint); text-align: center; line-height: 1.3; }
 .dialogue-content, .narration-content { flex: 1; padding-top: 4px; }
 .dialogue-label, .narration-label { font-size: var(--font-block-label); letter-spacing: 1px; color: var(--text-faint); text-transform: uppercase; margin-bottom: 3px; }
@@ -1102,20 +1279,19 @@ rt { color: var(--accent); font-size: 0.58em; line-height: 1; font-weight: 600; 
 rp { color: var(--text-faint); font-size: 0.72em; }
 `;
 
-function offsetFontSize(baseSize: number, offset: number) {
-  return `${clampFontSize(baseSize + clampLabelFontOffset(offset))}px`;
-}
-
 function renderLabelFontCss(data: TheaterData) {
-  const offset = clampLabelFontOffset(data.labelFontOffset ?? 0);
+  const presetId = normalizeFontPresetId(data.fontPreset);
+  const sizes = normalizeLabelFontSizes(data.labelFontSizes, data.labelFontOffset, presetId);
+  const portraitSize = clampPortraitSize(data.portraitSize ?? DEFAULT_PORTRAIT_SIZE);
   return `:root {
-  --font-post-tag: ${offsetFontSize(LABEL_FONT_SIZES.postTag, offset)};
-  --font-scene-number: ${offsetFontSize(LABEL_FONT_SIZES.sceneNumber, offset)};
-  --font-scene-image-label: ${offsetFontSize(LABEL_FONT_SIZES.sceneImageLabel, offset)};
-  --font-avatar-fallback: ${offsetFontSize(LABEL_FONT_SIZES.avatarFallback, offset)};
-  --font-character-name: ${offsetFontSize(LABEL_FONT_SIZES.characterName, offset)};
-  --font-block-label: ${offsetFontSize(LABEL_FONT_SIZES.blockLabel, offset)};
-  --font-side-title: ${offsetFontSize(LABEL_FONT_SIZES.sideTitle, offset)};
+  --font-post-tag: ${sizes.postTag}px;
+  --font-scene-number: ${sizes.sceneNumber}px;
+  --font-scene-image-label: ${sizes.sceneImageLabel}px;
+  --font-avatar-fallback: ${sizes.avatarFallback}px;
+  --font-character-name: ${sizes.characterName}px;
+  --font-block-label: ${sizes.blockLabel}px;
+  --font-side-title: ${sizes.sideTitle}px;
+  --portrait-size: ${portraitSize}px;
 }`;
 }
 
@@ -1288,9 +1464,13 @@ function normalizeCharacterPresets(presets: CharacterPreset[]) {
 }
 
 function normalizeTheaterData(data: TheaterData): TheaterData {
+  const fontPreset = normalizeFontPresetId(data.fontPreset);
   return {
     ...data,
-    labelFontOffset: clampLabelFontOffset(data.labelFontOffset ?? 0),
+    fontPreset,
+    labelFontSizes: normalizeLabelFontSizes(data.labelFontSizes, data.labelFontOffset, fontPreset),
+    portraitSize: clampPortraitSize(data.portraitSize ?? DEFAULT_PORTRAIT_SIZE),
+    labelFontOffset: undefined,
     blocks: data.blocks.map((block) => {
       if (!isSceneCard(block)) return block;
       return {
@@ -1401,55 +1581,57 @@ function updateStyleFontSize(style: TextStyle | undefined, action: FontSizeActio
   return { ...style, fontSize: clampFontSize(nextSize) };
 }
 
-function updateSceneBlockFontSizes(block: SceneBlock, action: FontSizeAction): SceneBlock {
+function updateSceneBlockFontSizes(block: SceneBlock, action: FontSizeAction, presetId: FontPresetId): SceneBlock {
+  const sceneDefaults = getSceneDefaultFontSizes(presetId);
   if (block.type === "reference") return block;
   if (block.type === "sceneHeader") {
     return {
       ...block,
-      title: updateTextSizeTags(block.title, action, SCENE_DEFAULT_FONT_SIZES.sceneTitle),
-      desc: updateTextSizeTags(block.desc, action, SCENE_DEFAULT_FONT_SIZES.sceneDesc),
-      titleStyle: updateStyleFontSize(block.titleStyle, action, SCENE_DEFAULT_FONT_SIZES.sceneTitle),
-      descStyle: updateStyleFontSize(block.descStyle, action, SCENE_DEFAULT_FONT_SIZES.sceneDesc)
+      title: updateTextSizeTags(block.title, action, sceneDefaults.sceneTitle),
+      desc: updateTextSizeTags(block.desc, action, sceneDefaults.sceneDesc),
+      titleStyle: updateStyleFontSize(block.titleStyle, action, sceneDefaults.sceneTitle),
+      descStyle: updateStyleFontSize(block.descStyle, action, sceneDefaults.sceneDesc)
     };
   }
   if (block.type === "character") {
     return {
       ...block,
-      text: updateTextSizeTags(block.text, action, SCENE_DEFAULT_FONT_SIZES.character),
-      textStyle: updateStyleFontSize(block.textStyle, action, SCENE_DEFAULT_FONT_SIZES.character)
+      text: updateTextSizeTags(block.text, action, sceneDefaults.character),
+      textStyle: updateStyleFontSize(block.textStyle, action, sceneDefaults.character)
     };
   }
   if (block.type === "narration") {
     return {
       ...block,
-      text: updateTextSizeTags(block.text, action, SCENE_DEFAULT_FONT_SIZES.narration),
-      textStyle: updateStyleFontSize(block.textStyle, action, SCENE_DEFAULT_FONT_SIZES.narration)
+      text: updateTextSizeTags(block.text, action, sceneDefaults.narration),
+      textStyle: updateStyleFontSize(block.textStyle, action, sceneDefaults.narration)
     };
   }
   if (block.type === "afterword") {
     return {
       ...block,
-      text: updateTextSizeTags(block.text, action, SCENE_DEFAULT_FONT_SIZES.afterword),
-      textStyle: updateStyleFontSize(block.textStyle, action, SCENE_DEFAULT_FONT_SIZES.afterword)
+      text: updateTextSizeTags(block.text, action, sceneDefaults.afterword),
+      textStyle: updateStyleFontSize(block.textStyle, action, sceneDefaults.afterword)
     };
   }
   return {
     ...block,
-    textStyle: updateStyleFontSize(block.textStyle, action, SCENE_DEFAULT_FONT_SIZES.tikitaka),
-    lines: block.lines.map((line) => ({ ...line, text: updateTextSizeTags(line.text, action, SCENE_DEFAULT_FONT_SIZES.tikitaka) }))
+    textStyle: updateStyleFontSize(block.textStyle, action, sceneDefaults.tikitaka),
+    lines: block.lines.map((line) => ({ ...line, text: updateTextSizeTags(line.text, action, sceneDefaults.tikitaka) }))
   };
 }
 
-function updatePageBlockFontSizes(block: PageBlock, action: FontSizeAction): PageBlock {
+function updatePageBlockFontSizes(block: PageBlock, action: FontSizeAction, presetId: FontPresetId): PageBlock {
+  const moduleDefaults = getModuleDefaultFontSizes(presetId);
   if (!isSceneCard(block)) {
-    const defaultSize = MODULE_DEFAULT_FONT_SIZES[block.moduleType];
+    const defaultSize = moduleDefaults[block.moduleType];
     return {
       ...block,
       content: updateTextSizeTags(block.content, action, defaultSize),
       textStyle: updateStyleFontSize(block.textStyle, action, defaultSize)
     };
   }
-  return { ...block, blocks: block.blocks.map((sceneBlock) => updateSceneBlockFontSizes(sceneBlock, action)) };
+  return { ...block, blocks: block.blocks.map((sceneBlock) => updateSceneBlockFontSizes(sceneBlock, action, presetId)) };
 }
 
 function renderModuleBlock(block: ModuleBlock) {
@@ -1524,25 +1706,102 @@ function renderPreviewShell(css: string, theme: ThemeMode = "blackGold") {
 }
 
 function renderHtml(data: TheaterData, presets: CharacterPreset[], theme: ThemeMode = "blackGold") {
-  return `<!doctype html><html lang="ko" class="theme-${theme}"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>Theater Export</title><style>${renderCss(
-    data
-  )}</style></head><body class="theme-${theme}">${renderPreviewBody(
-    data,
-    presets
-  )}</body></html>`;
+  return renderStandaloneHtml(renderPreviewBody(data, presets), data, theme);
 }
 
-function createModuleBlock(moduleType: ModuleType): ModuleBlock {
+function renderStandaloneHtml(bodyHtml: string, data: TheaterData, theme: ThemeMode = "blackGold") {
+  return `<!doctype html><html lang="ko" class="theme-${theme}"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>Theater Export</title><style>${renderCss(
+    data
+  )}</style></head><body class="theme-${theme}">${bodyHtml}</body></html>`;
+}
+
+function measureElementHeight(element: Element) {
+  const rect = element.getBoundingClientRect();
+  return Math.ceil(Math.max(rect.height, (element as HTMLElement).offsetHeight || 0, (element as HTMLElement).scrollHeight || 0));
+}
+
+function splitSceneHtml(scene: HTMLElement, maxChunkHeight: number) {
+  const children = Array.from(scene.children) as HTMLElement[];
+  const repeatedHeader =
+    children[0]?.classList.contains("scene-header") && children[0] instanceof HTMLElement
+      ? { html: children[0].outerHTML, height: measureElementHeight(children[0]) }
+      : null;
+  const chunks: Array<{ html: string; height: number }> = [];
+  let currentHtmlParts: string[] = [];
+  let currentHeight = 0;
+
+  const pushChunk = () => {
+    if (currentHtmlParts.length === 0) return;
+    chunks.push({ html: `<section class="scene">${currentHtmlParts.join("")}</section>`, height: currentHeight });
+    currentHtmlParts = [];
+    currentHeight = 0;
+  };
+
+  children.forEach((child, index) => {
+    const childHeight = Math.max(1, measureElementHeight(child));
+    if (currentHeight > 0 && currentHeight + childHeight > maxChunkHeight) {
+      pushChunk();
+    }
+    if (chunks.length > 0 && currentHtmlParts.length === 0 && repeatedHeader && index > 0) {
+      currentHtmlParts.push(repeatedHeader.html);
+      currentHeight += repeatedHeader.height;
+    }
+    currentHtmlParts.push(child.outerHTML);
+    currentHeight += childHeight;
+  });
+
+  pushChunk();
+  return chunks;
+}
+
+function buildCaptureChunkHtml(target: HTMLElement, maxChunkHeight: number) {
+  const children = Array.from(target.children) as HTMLElement[];
+  const chunks: Array<{ html: string; height: number }> = [];
+  let currentHtmlParts: string[] = [];
+  let currentHeight = 0;
+
+  const pushChunk = () => {
+    if (currentHtmlParts.length === 0) return;
+    chunks.push({ html: currentHtmlParts.join(""), height: currentHeight });
+    currentHtmlParts = [];
+    currentHeight = 0;
+  };
+
+  children.forEach((child) => {
+    const childHeight = Math.max(1, measureElementHeight(child));
+    const segments =
+      child.classList.contains("scene") && childHeight > maxChunkHeight
+        ? splitSceneHtml(child, maxChunkHeight)
+        : [{ html: child.outerHTML, height: childHeight }];
+
+    segments.forEach((segment) => {
+      if (currentHeight > 0 && currentHeight + segment.height > maxChunkHeight) {
+        pushChunk();
+      }
+      currentHtmlParts.push(segment.html);
+      currentHeight += segment.height;
+    });
+  });
+
+  pushChunk();
+  return chunks.length > 0 ? chunks : [{ html: target.innerHTML, height: Math.max(1, measureElementHeight(target)) }];
+}
+
+function createModuleBlock(moduleType: ModuleType, presetId: FontPresetId): ModuleBlock {
+  const moduleDefaults = getModuleDefaultFontSizes(presetId);
+  const defaultTextStyle = getDefaultTextStyle(presetId);
   return {
     id: makeId(),
     kind: "module",
     moduleType,
     content: moduleType === "title" ? "새 제목" : moduleType === "subtitle" ? "새 부제" : "새 나레이션",
-    textStyle: moduleType === "title" ? { ...DEFAULT_TEXT_STYLE, fontSize: 23, bold: true } : { ...DEFAULT_TEXT_STYLE }
+    textStyle: moduleType === "title" ? { ...defaultTextStyle, fontSize: moduleDefaults.title, bold: true } : { ...defaultTextStyle }
   };
 }
 
-function createSceneCard(): SceneCardData {
+function createSceneCard(presetId: FontPresetId): SceneCardData {
+  const defaultTextStyle = getDefaultTextStyle(presetId);
+  const sceneDefaults = getSceneDefaultFontSizes(presetId);
   return {
     id: makeId(),
     kind: "scene",
@@ -1555,14 +1814,16 @@ function createSceneCard(): SceneCardData {
         title: "새 장면",
         desc: "",
         imageLabel: "이미지",
-        titleStyle: { ...DEFAULT_TEXT_STYLE, fontSize: 15, bold: true },
-        descStyle: { ...DEFAULT_TEXT_STYLE, fontSize: 15, color: "#9a9080" }
+        titleStyle: { ...defaultTextStyle, fontSize: sceneDefaults.sceneTitle, bold: true },
+        descStyle: { ...defaultTextStyle, fontSize: sceneDefaults.sceneDesc, color: "#9a9080" }
       }
     ]
   };
 }
 
-function createSceneBlock(type: SceneBlockType, defaultCharacterId: string): SceneBlock {
+function createSceneBlock(type: SceneBlockType, defaultCharacterId: string, presetId: FontPresetId): SceneBlock {
+  const defaultTextStyle = getDefaultTextStyle(presetId);
+  const sceneDefaults = getSceneDefaultFontSizes(presetId);
   if (type === "sceneHeader") {
     return {
       id: makeId(),
@@ -1571,15 +1832,15 @@ function createSceneBlock(type: SceneBlockType, defaultCharacterId: string): Sce
       title: "장면 제목",
       desc: "",
       imageLabel: "이미지",
-      titleStyle: { ...DEFAULT_TEXT_STYLE, fontSize: 15, bold: true },
-      descStyle: { ...DEFAULT_TEXT_STYLE, fontSize: 15, color: "#9a9080" }
+      titleStyle: { ...defaultTextStyle, fontSize: sceneDefaults.sceneTitle, bold: true },
+      descStyle: { ...defaultTextStyle, fontSize: sceneDefaults.sceneDesc, color: "#9a9080" }
     };
   }
-  if (type === "character") return { id: makeId(), type, characterId: defaultCharacterId, role: "대사", text: "", textStyle: { ...DEFAULT_TEXT_STYLE } };
-  if (type === "narration") return { id: makeId(), type, title: "나레이션", text: "", textStyle: { ...DEFAULT_TEXT_STYLE } };
-  if (type === "afterword") return { id: makeId(), type, title: "후기", text: "", textStyle: { ...DEFAULT_TEXT_STYLE, fontSize: 14, color: "#9a9080" } };
+  if (type === "character") return { id: makeId(), type, characterId: defaultCharacterId, role: "대사", text: "", textStyle: { ...defaultTextStyle } };
+  if (type === "narration") return { id: makeId(), type, title: "나레이션", text: "", textStyle: { ...defaultTextStyle } };
+  if (type === "afterword") return { id: makeId(), type, title: "후기", text: "", textStyle: { ...defaultTextStyle, fontSize: sceneDefaults.afterword, color: "#9a9080" } };
   if (type === "reference") return { id: makeId(), type, title: "참고 데이터", text: "" };
-  return { id: makeId(), type, title: "티키타카", textStyle: { ...DEFAULT_TEXT_STYLE, fontSize: 15, color: "#9a9080" }, lines: [{ id: makeId(), speaker: "화자", text: "" }] };
+  return { id: makeId(), type, title: "티키타카", textStyle: { ...defaultTextStyle, fontSize: sceneDefaults.tikitaka, color: "#9a9080" }, lines: [{ id: makeId(), speaker: "화자", text: "" }] };
 }
 
 type ImageOptimizeOptions = {
@@ -1789,8 +2050,7 @@ async function renderDownloadHtml(data: TheaterData, presets: CharacterPreset[],
   );
 
   const exportData: TheaterData = {
-    ...data,
-    labelFontOffset: clampLabelFontOffset(data.labelFontOffset ?? 0),
+    ...normalizeTheaterData(data),
     blocks: await Promise.all(
       data.blocks.map(async (block) => {
         if (!isSceneCard(block)) return block;
@@ -1865,7 +2125,9 @@ function saveBoolean(key: string, value: boolean) {
 function createEmptyTheaterData(): TheaterData {
   return {
     blocks: [],
-    labelFontOffset: 0
+    fontPreset: DEFAULT_FONT_PRESET_ID,
+    labelFontSizes: getDefaultLabelFontSizes(DEFAULT_FONT_PRESET_ID),
+    portraitSize: DEFAULT_PORTRAIT_SIZE
   };
 }
 
@@ -2055,9 +2317,14 @@ function createSaveFile(data: TheaterData, presets: CharacterPreset[]): Required
   };
 }
 
-function makeCaptureFilename() {
-  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
-  return `theater-capture-${stamp}.png`;
+function makeCaptureStamp() {
+  return new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+}
+
+function makeCaptureFilename(stamp: string, part?: number, totalParts?: number) {
+  if (!part || !totalParts || totalParts <= 1) return `theater-capture-${stamp}.png`;
+  const digits = String(totalParts).length;
+  return `theater-capture-${stamp}-${String(part).padStart(digits, "0")}.png`;
 }
 
 function TextArea({ value, onChange, rows = 3 }: { value: string; onChange: (value: string) => void; rows?: number }) {
@@ -2717,6 +2984,7 @@ const SceneBlockEditor = React.memo(function SceneBlockEditor({
 const SceneEditor = React.memo(function SceneEditor({
   scene,
   presets,
+  fontPreset,
   onChange,
   onTextChange,
   onBlockChange,
@@ -2727,6 +2995,7 @@ const SceneEditor = React.memo(function SceneEditor({
 }: {
   scene: SceneCardData;
   presets: CharacterPreset[];
+  fontPreset: FontPresetId;
   onChange: (scene: SceneCardData) => void;
   onTextChange: (scene: SceneCardData) => void;
   onBlockChange: (sceneId: string, blockId: string, block: SceneBlock) => void;
@@ -2750,7 +3019,7 @@ const SceneEditor = React.memo(function SceneEditor({
       <input className="sceneName" value={scene.name} onChange={(event) => onTextChange({ ...scene, name: event.target.value })} />
       <div className="addRow">
         {(["sceneHeader", "character", "narration", "afterword", "tikitaka", "reference"] as SceneBlockType[]).map((type) => (
-          <button key={type} type="button" onClick={() => onChange({ ...scene, blocks: [...scene.blocks, createSceneBlock(type, defaultCharacterId)] })}>
+          <button key={type} type="button" onClick={() => onChange({ ...scene, blocks: [...scene.blocks, createSceneBlock(type, defaultCharacterId, fontPreset)] })}>
             <Plus size={14} />
             {SCENE_BLOCK_LABELS[type]}
           </button>
@@ -3166,25 +3435,47 @@ export default function TheaterToolBuilder() {
       captureFrame = frame;
 
       const rect = target.getBoundingClientRect();
-      const width = Math.ceil(rect.width || target.scrollWidth);
-      const height = Math.ceil(Math.max(target.scrollHeight, rect.height));
+      const measuredWidth = Math.ceil(rect.width || target.scrollWidth);
+      const measuredHeight = Math.ceil(Math.max(target.scrollHeight, rect.height));
       const backgroundColor = doc.defaultView?.getComputedStyle(target).backgroundColor || "#0f0e0d";
-      const pixelRatio = height > 12000 ? 1 : Math.min(2, window.devicePixelRatio || 1);
-      const dataUrl = await toPng(target, {
-        cacheBust: true,
-        pixelRatio,
-        width,
-        height,
-        backgroundColor,
-        style: {
-          width: `${width}px`,
-          minHeight: `${height}px`,
-          height: `${height}px`,
-          overflow: "visible"
-        }
-      });
+      const devicePixelRatio = Math.min(2, window.devicePixelRatio || 1);
+      const maxChunkHeight = Math.max(2048, Math.floor(MAX_CAPTURE_CANVAS_HEIGHT / devicePixelRatio));
+      const chunkMarkup = buildCaptureChunkHtml(target, maxChunkHeight);
+      const partCount = chunkMarkup.length;
+      const pixelRatio = partCount > 1 ? devicePixelRatio : measuredHeight > 12000 ? 1 : devicePixelRatio;
+      const captureStamp = makeCaptureStamp();
+      captureFrame.remove();
+      captureFrame = null;
 
-      downloadDataUrl(makeCaptureFilename(), dataUrl);
+      for (let partIndex = 0; partIndex < chunkMarkup.length; partIndex += 1) {
+        const chunkFrameResult = await createCaptureFrame(renderStandaloneHtml(chunkMarkup[partIndex].html, data, theme));
+        captureFrame = chunkFrameResult.frame;
+        const chunkRect = chunkFrameResult.target.getBoundingClientRect();
+        const width = Math.ceil(chunkRect.width || chunkFrameResult.target.scrollWidth || measuredWidth);
+        const height = Math.ceil(Math.max(chunkFrameResult.target.scrollHeight, chunkRect.height));
+        const dataUrl = await toPng(chunkFrameResult.target, {
+          cacheBust: true,
+          pixelRatio,
+          width,
+          height,
+          canvasWidth: width,
+          canvasHeight: height,
+          backgroundColor,
+          style: {
+            width: `${width}px`,
+            minHeight: `${height}px`,
+            height: `${height}px`,
+            overflow: "visible"
+          }
+        });
+
+        downloadDataUrl(makeCaptureFilename(captureStamp, partIndex + 1, partCount), dataUrl);
+        captureFrame.remove();
+        captureFrame = null;
+        if (partCount > 1 && partIndex < partCount - 1) {
+          await new Promise<void>((resolve) => window.setTimeout(() => resolve(), 120));
+        }
+      }
     } catch (error) {
       window.alert(error instanceof Error ? `캡처에 실패했습니다: ${error.message}` : "캡처에 실패했습니다.");
     } finally {
@@ -3298,28 +3589,54 @@ export default function TheaterToolBuilder() {
   const resetBodyFontSizes = () => {
     commitData((current) => ({
       ...current,
-      blocks: current.blocks.map((block) => updatePageBlockFontSizes(block, { mode: "reset" }))
+      blocks: current.blocks.map((block) => updatePageBlockFontSizes(block, { mode: "reset" }, normalizeFontPresetId(current.fontPreset)))
     }));
   };
 
   const shiftBodyFontSizes = (delta: -1 | 1) => {
     commitData((current) => ({
       ...current,
-      blocks: current.blocks.map((block) => updatePageBlockFontSizes(block, { mode: "shift", delta }))
+      blocks: current.blocks.map((block) => updatePageBlockFontSizes(block, { mode: "shift", delta }, normalizeFontPresetId(current.fontPreset)))
     }));
   };
 
   const resetLabelFontSizes = () => {
     commitData((current) => ({
       ...current,
-      labelFontOffset: 0
+      labelFontSizes: getDefaultLabelFontSizes()
     }));
   };
 
   const shiftLabelFontSizes = (delta: -1 | 1) => {
     commitData((current) => ({
       ...current,
-      labelFontOffset: clampLabelFontOffset((current.labelFontOffset ?? 0) + delta)
+      labelFontSizes: shiftLabelFontSizesByDelta(
+        normalizeLabelFontSizes(current.labelFontSizes, current.labelFontOffset, normalizeFontPresetId(current.fontPreset)),
+        delta
+      )
+    }));
+  };
+
+  const resetPortraitSize = () => {
+    commitData((current) => ({
+      ...current,
+      portraitSize: DEFAULT_PORTRAIT_SIZE
+    }));
+  };
+
+  const shiftPortraitSize = (delta: -1 | 1) => {
+    commitData((current) => ({
+      ...current,
+      portraitSize: clampPortraitSize((current.portraitSize ?? DEFAULT_PORTRAIT_SIZE) + delta * 4)
+    }));
+  };
+
+  const applyFontPreset = (presetId: FontPresetId) => {
+    commitData((current) => ({
+      ...current,
+      fontPreset: presetId,
+      blocks: current.blocks.map((block) => updatePageBlockFontSizes(block, { mode: "reset" }, presetId)),
+      labelFontSizes: getDefaultLabelFontSizes(presetId)
     }));
   };
 
@@ -3736,7 +4053,7 @@ export default function TheaterToolBuilder() {
       <style>{appCss}</style>
       <header className="toolbar">
         <div>
-          <h1>극장 도구 제작기</h1>
+          <h1>마녀극장 제작기</h1>
           <p>왼쪽에서 편집하고 오른쪽에서 결과를 바로 확인합니다.</p>
         </div>
         <div className="toolbarActions">
@@ -3826,6 +4143,18 @@ export default function TheaterToolBuilder() {
                 <Palette size={18} />
                 폰트 관리
               </div>
+              <div className="fontPresetButtons">
+                {FONT_PRESET_OPTIONS.map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    className={normalizeFontPresetId(data.fontPreset) === option.id ? "active" : ""}
+                    onClick={() => applyFontPreset(option.id)}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
               <div className="fontControlGroup">
                 <button type="button" onClick={resetBodyFontSizes} title="본문 폰트 크기를 종류별 기본값으로 되돌림">
                   <RotateCcw size={15} />
@@ -3851,6 +4180,20 @@ export default function TheaterToolBuilder() {
                   </button>
                   <button type="button" onClick={() => shiftLabelFontSizes(1)} title="라벨 폰트 크기 1단계 증가">
                     라벨 +1
+                  </button>
+                </div>
+              </div>
+              <div className="fontControlGroup">
+                <button type="button" onClick={resetPortraitSize} title="본문 캐릭터 프로필 사진 크기를 기본값으로 되돌림">
+                  <RotateCcw size={15} />
+                  프로필 재설정
+                </button>
+                <div className="fontBatchButtons">
+                  <button type="button" onClick={() => shiftPortraitSize(-1)} title="본문 캐릭터 프로필 사진 크기 감소">
+                    프로필 -1
+                  </button>
+                  <button type="button" onClick={() => shiftPortraitSize(1)} title="본문 캐릭터 프로필 사진 크기 증가">
+                    프로필 +1
                   </button>
                 </div>
               </div>
@@ -3898,16 +4241,16 @@ export default function TheaterToolBuilder() {
                 <Plus size={18} />
                 블록 추가
               </div>
-              <button type="button" onClick={() => commitData((current) => ({ ...current, blocks: [...current.blocks, createModuleBlock("title")] }))}>
+              <button type="button" onClick={() => commitData((current) => ({ ...current, blocks: [...current.blocks, createModuleBlock("title", normalizeFontPresetId(current.fontPreset))] }))}>
                 제목
               </button>
-              <button type="button" onClick={() => commitData((current) => ({ ...current, blocks: [...current.blocks, createModuleBlock("subtitle")] }))}>
+              <button type="button" onClick={() => commitData((current) => ({ ...current, blocks: [...current.blocks, createModuleBlock("subtitle", normalizeFontPresetId(current.fontPreset))] }))}>
                 부제
               </button>
-              <button type="button" onClick={() => commitData((current) => ({ ...current, blocks: [...current.blocks, createModuleBlock("narration")] }))}>
+              <button type="button" onClick={() => commitData((current) => ({ ...current, blocks: [...current.blocks, createModuleBlock("narration", normalizeFontPresetId(current.fontPreset))] }))}>
                 나레이션
               </button>
-              <button type="button" onClick={() => commitData((current) => ({ ...current, blocks: [...current.blocks, createSceneCard()] }))}>
+              <button type="button" onClick={() => commitData((current) => ({ ...current, blocks: [...current.blocks, createSceneCard(normalizeFontPresetId(current.fontPreset))] }))}>
                 장면
               </button>
             </section>
@@ -3954,6 +4297,7 @@ export default function TheaterToolBuilder() {
                   <SceneEditor
                     scene={block}
                     presets={presets}
+                    fontPreset={normalizeFontPresetId(data.fontPreset)}
                     onChange={(scene) => updateBlock(block.id, scene)}
                     onTextChange={(scene) => updateBlockText(block.id, scene)}
                     onBlockChange={updateSceneBlock}
@@ -4159,6 +4503,8 @@ textarea { resize: vertical; line-height: 1.6; }
 .panelTitle, .blockHeader { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; color: var(--app-accent-soft); font-weight: 700; }
 .panelTitle { justify-content: flex-start; }
 .fontControlGroup { display: grid; gap: 7px; padding: 9px; border: 1px solid var(--app-border); border-radius: 8px; background: var(--app-surface-2); }
+.fontPresetButtons { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 8px; }
+.fontPresetButtons button { min-width: 0; font-size: 12px; white-space: nowrap; padding-left: 8px; padding-right: 8px; }
 .fontBatchButtons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .fontBatchButtons button { padding-left: 8px; padding-right: 8px; }
 .emptyTemplates { padding: 10px; border: 1px dashed var(--app-border-2); border-radius: 8px; color: var(--app-faint); font-size: 12px; line-height: 1.45; text-align: center; word-break: keep-all; overflow-wrap: break-word; }
@@ -4315,3 +4661,4 @@ textarea { resize: vertical; line-height: 1.6; }
   .characterGrid { grid-template-columns: 1fr; }
 }
 `;
+

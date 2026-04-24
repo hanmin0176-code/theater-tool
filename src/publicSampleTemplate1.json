@@ -8,7 +8,7 @@
         "moduleType": "title",
         "content": "웹노벨 스타일 — 2회차 소녀들의 상영회",
         "textStyle": {
-          "fontSize": 25,
+          "fontSize": 31,
           "bold": true,
           "italic": false,
           "color": "#e8e0d0"
@@ -20,7 +20,7 @@
         "moduleType": "subtitle",
         "content": "출소 3개월 후 · 메루루 생존",
         "textStyle": {
-          "fontSize": 18,
+          "fontSize": 24,
           "bold": false,
           "italic": false,
           "color": "#9a9080"
@@ -32,7 +32,7 @@
         "moduleType": "narration",
         "content": "유키가 마녀 인자를 거두어 가면서, 감옥섬은 감옥이기를 멈췄다. 높은 담장은 그대로였고, 올빼미는 여전히 날아다녔고, 간수는 복도를 돌아다녔지만 — 이제는 [ruby=나레하테]말로[/ruby]가 아니었다. 처형대는 있었지만 작동하지 않았다. 감방 문은 잠기지 않았다.\n\n그리고 소녀들은 각자의 삶으로 돌아갔다.\n\n에마는 가족한테 돌아갔다. 히로는 정리할 게 있었다. 레이아는 소속사로 돌아갔다. 셰리는 한나를 끌고 자기 집으로 갔다. 코코는 할아버지를 만났다. 나노카는 언니를 데리고 섬을 나갔다.\n\n감옥섬에는 몇 명만이 남았다.\n딱히 밖에 가고 싶지 않은 사람들이었다. 아니면, 지금은 서로 가까이 있는 게 나은 사람들.\n\n마고와 메루루는 도서실 정리를 했다. 노아는 아틀리에에서 그림을 그렸다. 안안은 노아의 그림에 맞춰 소설을 썼다. 말로였던 소녀들은 인간으로 돌아와 감옥 안에서 회복 중이었다. 교도소장은 여전히 느릿하게 날아다녔다.\n\n그리고 100일째 되던 날, 편지가 왔다.",
         "textStyle": {
-          "fontSize": 18,
+          "fontSize": 24,
           "bold": false,
           "italic": false,
           "color": "#9a9080"
@@ -51,13 +51,13 @@
             "desc": "평소에 쓰던 스마트폰 알람이 아니었다. 편지였다. \n감옥 특유의 눅눅한 봉투에, 교도소장 특유의 느릿하고 흐릿한 필체로.",
             "imageLabel": "인게임 스크린샷",
             "titleStyle": {
-              "fontSize": 17,
+              "fontSize": 23,
               "bold": true,
               "italic": false,
               "color": "#e8e0d0"
             },
             "descStyle": {
-              "fontSize": 17,
+              "fontSize": 23,
               "bold": false,
               "italic": false,
               "color": "#9a9080"
@@ -71,7 +71,7 @@
             "role": "편지",
             "text": "//[……번거롭게 해 드려 죄송합니다만, 한 번 더 모여 주셨으면 합니다.]//",
             "textStyle": {
-              "fontSize": 18,
+              "fontSize": 24,
               "bold": false,
               "italic": false,
               "color": "#e8e0d0"
@@ -84,7 +84,7 @@
             "role": "당혹",
             "text": "\"……손으로 썼어. 앱도 타이핑도 아니고, 직접.\"\n\"……그 날개로. 어떻게 쥐고 쓴 건가.\"",
             "textStyle": {
-              "fontSize": 18,
+              "fontSize": 24,
               "bold": false,
               "italic": false,
               "color": "#e8e0d0"
@@ -98,7 +98,7 @@
         "moduleType": "narration",
         "content": "사유는 적혀 있지 않았다.\n\n그러나 니카이도 히로는 굳이 가지 않을 이유가 없었다.\n\n정리할 게 있었다고 말했지만, 그건 끝났다. 돌아올 곳도 없고, 붙잡을 것도 없었다.\n사유가 없다는 건 변수가 파악되지 않았다는 뜻이고, 히로는 파악되지 않은 것을 그냥 두는 법을 몰랐다.\n\n무시하는 편이 훨씬 편했겠지만. 편한 쪽을 고르는 건, 이번엔 하지 않기로 했다.\n\n그리고 — 이런 저런 이유를 다 제치고 — **모여**달라고 했다.\n에마도 불렸을 것이다. 다른 아이들도 올테고, 노아가 아직 섬에 있었다.\n\n다시 한 번 모두 함께 만나고 싶었다.",
         "textStyle": {
-          "fontSize": 18,
+          "fontSize": 24,
           "bold": false,
           "italic": false,
           "color": "#e8e0d0"
@@ -117,13 +117,13 @@
             "desc": "섬에 도착한 순서는 제각각이었다.\n에마와 셰리가 같은 배를 탔다. 저택에 도착하자마자 메루루가 뛰어왔다.",
             "imageLabel": "이미지",
             "titleStyle": {
-              "fontSize": 17,
+              "fontSize": 23,
               "bold": true,
               "italic": false,
               "color": "#e8e0d0"
             },
             "descStyle": {
-              "fontSize": 17,
+              "fontSize": 23,
               "bold": false,
               "italic": false,
               "color": "#9a9080"
@@ -137,7 +137,7 @@
             "role": "대사",
             "text": "\"에마 씨! 셰리 씨……! 오, 오랜만이에요……!\"",
             "textStyle": {
-              "fontSize": 18,
+              "fontSize": 24,
               "bold": false,
               "italic": false,
               "color": "#e8e0d0"
@@ -150,7 +150,7 @@
             "role": "대사",
             "text": "\"메루루 씨—! 잘 지내셨나요? 셰리 쨩, 정말 보고 싶었답니다!\"",
             "textStyle": {
-              "fontSize": 18,
+              "fontSize": 24,
               "bold": false,
               "italic": false,
               "color": "#e8e0d0"
@@ -163,7 +163,7 @@
             "role": "대사",
             "text": "\"메루루 쨩……! 나도, 정말 보고 싶었어!\"",
             "textStyle": {
-              "fontSize": 18,
+              "fontSize": 24,
               "bold": false,
               "italic": false,
               "color": "#e8e0d0"
@@ -176,7 +176,7 @@
             "role": "대사",
             "text": "\"……어머. 이렇게 빨리 오는 사람이 있을 줄은 몰랐네.\"",
             "textStyle": {
-              "fontSize": 18,
+              "fontSize": 24,
               "bold": false,
               "italic": false,
               "color": "#e8e0d0"
@@ -188,7 +188,7 @@
             "title": "",
             "text": "마고가 도서실 창문에서 이쪽을 내려다보고 있었다.",
             "textStyle": {
-              "fontSize": 18,
+              "fontSize": 24,
               "bold": false,
               "italic": false,
               "color": "#e8e0d0"
@@ -201,7 +201,7 @@
             "role": "대사",
             "text": "\"어라, 마고 씨! 거기 계셨군요. 같이 안 내려오시나요?\"",
             "textStyle": {
-              "fontSize": 18,
+              "fontSize": 24,
               "bold": false,
               "italic": false,
               "color": "#e8e0d0"
@@ -214,7 +214,7 @@
             "role": "대사",
             "text": "\"후후. 지금 내려갈게. 라운지에서 기다려 줘.\"",
             "textStyle": {
-              "fontSize": 18,
+              "fontSize": 24,
               "bold": false,
               "italic": false,
               "color": "#e8e0d0"
@@ -226,7 +226,7 @@
             "title": "",
             "text": "레이아는 짐이 제일 많았다. 캐리어를 끌고 선착장에 내리면서 한숨을 쉬었다.",
             "textStyle": {
-              "fontSize": 18,
+              "fontSize": 24,
               "bold": false,
               "italic": false,
               "color": "#e8e0d0"
@@ -239,7 +239,7 @@
             "role": "대사",
             "text": "\"하아…… 좀 과했나. 여기까지 다 가져올 필요는 없었겠지.\"",
             "textStyle": {
-              "fontSize": 18,
+              "fontSize": 24,
               "bold": false,
               "italic": false,
               "color": "#e8e0d0"
@@ -251,7 +251,7 @@
             "title": "우다다다",
             "text": "뒤에서 노아가 뛰어왔다.",
             "textStyle": {
-              "fontSize": 18,
+              "fontSize": 24,
               "bold": false,
               "italic": false,
               "color": "#e8e0d0"
@@ -264,7 +264,7 @@
             "role": "신나!",
             "text": "\"레이아 쨩이다—! 왔어! 와줬어! 노아, 계속 기다리고 있었단 말이야!\"",
             "textStyle": {
-              "fontSize": 18,
+              "fontSize": 24,
               "bold": false,
               "italic": false,
               "color": "#e8e0d0"
@@ -277,7 +277,7 @@
             "role": "당황",
             "text": "\"기, 기다려, 노아 군! 캐리어가——\"",
             "textStyle": {
-              "fontSize": 18,
+              "fontSize": 24,
               "bold": false,
               "italic": false,
               "color": "#e8e0d0"
@@ -290,7 +290,7 @@
             "role": "영차!",
             "text": "\"노아도 같이 들게—! 영차!\"",
             "textStyle": {
-              "fontSize": 18,
+              "fontSize": 24,
               "bold": false,
               "italic": false,
               "color": "#e8e0d0"
@@ -303,7 +303,7 @@
             "role": "대사",
             "text": "\"고, 고마운데…… 그쪽으로 당기면 안——\"",
             "textStyle": {
-              "fontSize": 18,
+              "fontSize": 24,
               "bold": false,
               "italic": false,
               "color": "#e8e0d0"
@@ -315,7 +315,7 @@
             "title": "",
             "text": "쿵! 소리가 났다.",
             "textStyle": {
-              "fontSize": 18,
+              "fontSize": 24,
               "bold": false,
               "italic": false,
               "color": "#e8e0d0"
@@ -328,7 +328,7 @@
             "role": "대사",
             "text": "\"……괜찮아. 괜찮아.\"",
             "textStyle": {
-              "fontSize": 18,
+              "fontSize": 24,
               "bold": false,
               "italic": false,
               "color": "#e8e0d0"
@@ -340,7 +340,7 @@
             "title": "",
             "text": "아리사는 혼자 왔다. 배에서 내려 선착장을 한 번 둘러보고는 저택 쪽으로 걸어갔다.",
             "textStyle": {
-              "fontSize": 18,
+              "fontSize": 24,
               "bold": false,
               "italic": false,
               "color": "#e8e0d0"
@@ -353,7 +353,7 @@
             "role": "혼잣말",
             "text": "\"……칫. 뭐야, 왜 여기가 제일 편한 거냐고.\"",
             "textStyle": {
-              "fontSize": 18,
+              "fontSize": 24,
               "bold": false,
               "italic": false,
               "color": "#e8e0d0"
@@ -365,7 +365,7 @@
             "title": "",
             "text": "코코가 도착하자마자 스마트폰을 꺼냈다.",
             "textStyle": {
-              "fontSize": 18,
+              "fontSize": 24,
               "bold": false,
               "italic": false,
               "color": "#e8e0d0"
@@ -378,7 +378,7 @@
             "role": "대사",
             "text": "\"하이하이~! 시청자 여러분, 아틔시 또 감옥 왔다구~ 다들 잘 보여? 아 으엑…… 여긴 역시 신호가 구리네, 진짜!\"",
             "textStyle": {
-              "fontSize": 18,
+              "fontSize": 24,
               "bold": false,
               "italic": false,
               "color": "#e8e0d0"
@@ -391,7 +391,7 @@
             "role": "대사",
             "text": "\"당신이라는 사람은……! 여기까지 와서도 방송인가요!? 아니, 애초에 여기가 방송에 나와도 되는 장소인가요~!?\"",
             "textStyle": {
-              "fontSize": 18,
+              "fontSize": 24,
               "bold": false,
               "italic": false,
               "color": "#e8e0d0"
@@ -404,7 +404,7 @@
             "role": "도야~",
             "text": "\"된다고 볼 수 있지~! 아틔시 최애인 시청자들이 이렇게 많이 보고 있으니까, 장소 같은 건 상관없다구~\"",
             "textStyle": {
-              "fontSize": 18,
+              "fontSize": 24,
               "bold": false,
               "italic": false,
               "color": "#e8e0d0"
@@ -417,7 +417,7 @@
             "role": "삐질",
             "text": "\"아하하…… 저, 저기, 아저씨는 안 비치게 조심해 줘…… 얼굴 찍히는 건 좀 곤란하다니까.\"",
             "textStyle": {
-              "fontSize": 18,
+              "fontSize": 24,
               "bold": false,
               "italic": false,
               "color": "#e8e0d0"
@@ -429,7 +429,7 @@
             "title": "",
             "text": "나노카는 혼자였다. 마중 나온 사람 없이 조용히 선착장에 내렸다.\n라운지에 도착했을 때 이미 다들 와 있었다.",
             "textStyle": {
-              "fontSize": 18,
+              "fontSize": 24,
               "bold": false,
               "italic": false,
               "color": "#e8e0d0"
@@ -442,7 +442,7 @@
             "role": "대사",
             "text": "\"……벌써 시작한 건 아니지?\"",
             "textStyle": {
-              "fontSize": 18,
+              "fontSize": 24,
               "bold": false,
               "italic": false,
               "color": "#e8e0d0"
@@ -455,7 +455,7 @@
             "role": "대사",
             "text": "\"나노카 쨩……! 와 줬구나. 정말 오랜만이야.\"",
             "textStyle": {
-              "fontSize": 18,
+              "fontSize": 24,
               "bold": false,
               "italic": false,
               "color": "#e8e0d0"
@@ -468,7 +468,7 @@
             "role": "대사",
             "text": "\"……그러게. 오랜만이네, 사쿠라바 에마.\"",
             "textStyle": {
-              "fontSize": 18,
+              "fontSize": 24,
               "bold": false,
               "italic": false,
               "color": "#e8e0d0"
@@ -481,7 +481,7 @@
             "role": "대사",
             "text": "\"언니는…… 같이 오지 않았어?\"",
             "textStyle": {
-              "fontSize": 18,
+              "fontSize": 24,
               "bold": false,
               "italic": false,
               "color": "#e8e0d0"
@@ -494,7 +494,7 @@
             "role": "대사",
             "text": "\"지금은 밖에 있어. ……잘 지내고 있어.\"",
             "textStyle": {
-              "fontSize": 18,
+              "fontSize": 24,
               "bold": false,
               "italic": false,
               "color": "#e8e0d0"
@@ -506,7 +506,7 @@
             "title": "",
             "text": "짧게 대답하고 구석 자리에 앉았다.\n안안이 그쪽으로 조용히 다가가서 옆에 앉았다.",
             "textStyle": {
-              "fontSize": 18,
+              "fontSize": 24,
               "bold": false,
               "italic": false,
               "color": "#e8e0d0"
@@ -519,7 +519,7 @@
             "role": "스케치북에 적는다",
             "text": "[……그동안, 무탈하였느냐.]",
             "textStyle": {
-              "fontSize": 18,
+              "fontSize": 24,
               "bold": false,
               "italic": false,
               "color": "#e8e0d0"
@@ -532,7 +532,7 @@
             "role": "작은 미소",
             "text": "\"……응.\"",
             "textStyle": {
-              "fontSize": 18,
+              "fontSize": 24,
               "bold": false,
               "italic": false,
               "color": "#e8e0d0"
@@ -544,7 +544,7 @@
             "title": "",
             "text": "히로가 마지막이었다. 에마가 문 쪽에서 기다리고 있었다.",
             "textStyle": {
-              "fontSize": 18,
+              "fontSize": 24,
               "bold": false,
               "italic": false,
               "color": "#e8e0d0"
@@ -557,7 +557,7 @@
             "role": "대사",
             "text": "\"히로 쨩……\"",
             "textStyle": {
-              "fontSize": 18,
+              "fontSize": 24,
               "bold": false,
               "italic": false,
               "color": "#e8e0d0"
@@ -570,7 +570,7 @@
             "role": "대사",
             "text": "\"……왔어.\"",
             "textStyle": {
-              "fontSize": 18,
+              "fontSize": 24,
               "bold": false,
               "italic": false,
               "color": "#e8e0d0"
@@ -583,7 +583,7 @@
             "role": "대사",
             "text": "\"……응!\"",
             "textStyle": {
-              "fontSize": 18,
+              "fontSize": 24,
               "bold": false,
               "italic": false,
               "color": "#e8e0d0"
@@ -595,7 +595,7 @@
             "title": "",
             "text": "둘이 잠깐 마주봤다. 그리고 누가 먼저라 할 것 없이 살풋 웃었다.",
             "textStyle": {
-              "fontSize": 18,
+              "fontSize": 24,
               "bold": false,
               "italic": false,
               "color": "#e8e0d0"
@@ -604,7 +604,17 @@
         ]
       }
     ],
-    "labelFontOffset": 2
+    "fontPreset": "pc",
+    "labelFontSizes": {
+      "postTag": 16,
+      "sceneNumber": 16,
+      "sceneImageLabel": 17,
+      "avatarFallback": 18,
+      "characterName": 15,
+      "blockLabel": 15,
+      "sideTitle": 15
+    },
+    "portraitSize": 74
   },
   "presets": [
     {
