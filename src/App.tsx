@@ -24,6 +24,7 @@ import {
 import { toPng } from "html-to-image";
 import publicSampleTemplate1 from "./publicSampleTemplate1.json";
 import publicSampleTemplate2 from "./publicSampleTemplate2.json";
+import publicSampleTemplate3 from "./publicSampleTemplate3.json";
 
 type ModuleType = "title" | "subtitle" | "narration";
 type SceneBlockType = "sceneHeader" | "character" | "narration" | "afterword" | "tikitaka" | "reference";
@@ -158,7 +159,7 @@ type TheaterData = {
   labelFontOffset?: number;
 };
 
-type ThemeMode = "blackGold" | "ivoryGold" | "midnightBlue" | "wineRose";
+type ThemeMode = "blackGold" | "ivoryGold" | "midnightBlue" | "wineRose" | "dcBlueWhite" | "sakuraPlum";
 
 type SavedTemplate = {
   id: string;
@@ -277,7 +278,9 @@ const THEME_OPTIONS: Array<{ id: ThemeMode; name: string; colors: [string, strin
   { id: "blackGold", name: "블랙/골드", colors: ["#12110f", "#c8a96e"] },
   { id: "ivoryGold", name: "아이보리/골드", colors: ["#fffaf2", "#8f6f32"] },
   { id: "midnightBlue", name: "미드나이트/실버", colors: ["#0d1320", "#9fb6d8"] },
-  { id: "wineRose", name: "와인/로즈", colors: ["#1d0f15", "#d6a0a8"] }
+  { id: "wineRose", name: "와인/로즈", colors: ["#1d0f15", "#d6a0a8"] },
+  { id: "dcBlueWhite", name: "디시 블루/화이트", colors: ["#ffffff", "#2f3f8f"] },
+  { id: "sakuraPlum", name: "사쿠라 핑크/플럼", colors: ["#fff7fb", "#8f4f73"] }
 ];
 
 const makeId = () => Math.random().toString(36).slice(2, 10);
@@ -792,11 +795,13 @@ const sampleData: TheaterData = {
 function createPublicSampleTemplates(): SavedTemplate[] {
   const importedSampleTemplate = publicSampleTemplate1 as TheaterSaveFile & TheaterData;
   const importedSampleTemplate2 = publicSampleTemplate2 as TheaterSaveFile & TheaterData;
+  const importedSampleTemplate3 = publicSampleTemplate3 as unknown as TheaterSaveFile & TheaterData;
   const samplePresets = normalizeCharacterPresets(
     Array.isArray(importedSampleTemplate.presets) ? importedSampleTemplate.presets : CHARACTER_PRESETS
   );
   const sampleTemplateData = normalizeTheaterData((importedSampleTemplate.data ?? importedSampleTemplate) as TheaterData);
   const sampleTemplateData2 = normalizeTheaterData((importedSampleTemplate2.data ?? importedSampleTemplate2) as TheaterData);
+  const sampleTemplateData3 = normalizeTheaterData((importedSampleTemplate3.data ?? importedSampleTemplate3) as TheaterData);
   return [
     {
       id: "sample-default-template",
@@ -810,6 +815,13 @@ function createPublicSampleTemplates(): SavedTemplate[] {
       name: "제작 참고 템플릿 2",
       createdAt: "2026-04-23T00:00:00.000Z",
       data: sampleTemplateData2,
+      presets: samplePresets
+    },
+    {
+      id: "sample-image-guide-template",
+      name: "이미지 설명서 3인방",
+      createdAt: "2026-04-24T00:00:00.000Z",
+      data: sampleTemplateData3,
       presets: samplePresets
     }
   ];
@@ -1002,6 +1014,32 @@ body.theme-wineRose {
   --text-faint: #866b73;
   --scroll-track: #24131a;
   --scroll-thumb: #c88d98;
+}
+html.theme-dcBlueWhite,
+body.theme-dcBlueWhite {
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #f5f7fb;
+  --border: #d9dfeb;
+  --accent: #2f3f8f;
+  --text: #20243a;
+  --text-dim: #58627f;
+  --text-faint: #94a0bd;
+  --scroll-track: #edf2fb;
+  --scroll-thumb: #2f3f8f;
+}
+html.theme-sakuraPlum,
+body.theme-sakuraPlum {
+  --bg: #fff8fb;
+  --surface: #ffffff;
+  --surface-2: #fff0f6;
+  --border: #eed7e4;
+  --accent: #b85f8f;
+  --text: #3c2a35;
+  --text-dim: #7c5b6f;
+  --text-faint: #b79aae;
+  --scroll-track: #faedf3;
+  --scroll-thumb: #b85f8f;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html {
@@ -1993,6 +2031,8 @@ function TextArea({ value, onChange, rows = 3 }: { value: string; onChange: (val
   return <textarea value={value} rows={rows} onChange={(event) => onChange(event.target.value)} />;
 }
 
+type CommitMode = "immediate" | "textGroup";
+
 function RichTextArea({ value, onChange, rows = 3 }: { value: string; onChange: (value: string) => void; rows?: number }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const [color, setColor] = useState("#c8a96e");
@@ -2430,11 +2470,13 @@ function CharacterImageManager({
 const SceneBlockEditor = React.memo(function SceneBlockEditor({
   block,
   presets,
-  onChange
+  onChange,
+  onTextChange
 }: {
   block: SceneBlock;
   presets: CharacterPreset[];
   onChange: (block: SceneBlock) => void;
+  onTextChange: (block: SceneBlock) => void;
 }) {
   const [isCharacterPickerOpen, setIsCharacterPickerOpen] = useState(false);
   const [expandedProfileGroupIds, setExpandedProfileGroupIds] = useState<Set<string>>(() => loadStringSet(PROFILE_GROUP_EXPANDED_STORAGE_KEY));
@@ -2451,9 +2493,9 @@ const SceneBlockEditor = React.memo(function SceneBlockEditor({
   if (block.type === "sceneHeader") {
     return (
       <div className="fieldGrid">
-        <input value={block.sceneNumber} onChange={(event) => onChange({ ...block, sceneNumber: event.target.value })} placeholder="SCENE 01" />
-        <RichTextArea value={block.title} rows={2} onChange={(title) => onChange({ ...block, title })} />
-        <input value={block.imageLabel} onChange={(event) => onChange({ ...block, imageLabel: event.target.value })} placeholder="이미지 라벨" />
+        <input value={block.sceneNumber} onChange={(event) => onTextChange({ ...block, sceneNumber: event.target.value })} placeholder="SCENE 01" />
+        <RichTextArea value={block.title} rows={2} onChange={(title) => onTextChange({ ...block, title })} />
+        <input value={block.imageLabel} onChange={(event) => onTextChange({ ...block, imageLabel: event.target.value })} placeholder="이미지 라벨" />
         <label className="fileButton">
           <Upload size={15} />
           장면 이미지
@@ -2478,7 +2520,7 @@ const SceneBlockEditor = React.memo(function SceneBlockEditor({
             이미지 제거
           </button>
         ) : null}
-        <RichTextArea value={block.desc} rows={4} onChange={(desc) => onChange({ ...block, desc })} />
+        <RichTextArea value={block.desc} rows={4} onChange={(desc) => onTextChange({ ...block, desc })} />
       </div>
     );
   }
@@ -2577,8 +2619,8 @@ const SceneBlockEditor = React.memo(function SceneBlockEditor({
             })}
           </div>
         ) : null}
-        <input value={block.role ?? ""} onChange={(event) => onChange({ ...block, role: event.target.value })} placeholder="역할/라벨" />
-        <RichTextArea value={block.text} rows={4} onChange={(text) => onChange({ ...block, text })} />
+        <input value={block.role ?? ""} onChange={(event) => onTextChange({ ...block, role: event.target.value })} placeholder="역할/라벨" />
+        <RichTextArea value={block.text} rows={4} onChange={(text) => onTextChange({ ...block, text })} />
       </div>
     );
   }
@@ -2586,14 +2628,14 @@ const SceneBlockEditor = React.memo(function SceneBlockEditor({
   if (block.type === "tikitaka") {
     return (
       <div className="fieldGrid">
-        <input value={block.title} onChange={(event) => onChange({ ...block, title: event.target.value })} placeholder="제목" />
+        <input value={block.title} onChange={(event) => onTextChange({ ...block, title: event.target.value })} placeholder="제목" />
         {block.lines.map((line, index) => (
           <div className="lineEditorRich" key={line.id}>
             <div className="lineMeta">
               <input
                 value={line.speaker}
                 onChange={(event) =>
-                  onChange({ ...block, lines: block.lines.map((item) => (item.id === line.id ? { ...item, speaker: event.target.value } : item)) })
+                  onTextChange({ ...block, lines: block.lines.map((item) => (item.id === line.id ? { ...item, speaker: event.target.value } : item)) })
                 }
                 placeholder="화자"
               />
@@ -2610,7 +2652,7 @@ const SceneBlockEditor = React.memo(function SceneBlockEditor({
               value={line.text}
               rows={2}
               onChange={(text) =>
-                onChange({ ...block, lines: block.lines.map((item) => (item.id === line.id ? { ...item, text } : item)) })
+                onTextChange({ ...block, lines: block.lines.map((item) => (item.id === line.id ? { ...item, text } : item)) })
               }
             />
           </div>
@@ -2625,16 +2667,16 @@ const SceneBlockEditor = React.memo(function SceneBlockEditor({
   if (block.type === "reference") {
     return (
       <div className="fieldGrid referenceEditor">
-        <input value={block.title} onChange={(event) => onChange({ ...block, title: event.target.value })} placeholder="참고 제목" />
-        <TextArea value={block.text} rows={5} onChange={(text) => onChange({ ...block, text })} />
+        <input value={block.title} onChange={(event) => onTextChange({ ...block, title: event.target.value })} placeholder="참고 제목" />
+        <TextArea value={block.text} rows={5} onChange={(text) => onTextChange({ ...block, text })} />
       </div>
     );
   }
 
   return (
     <div className="fieldGrid">
-      <input value={block.title} onChange={(event) => onChange({ ...block, title: event.target.value })} placeholder="제목" />
-      <RichTextArea value={block.text} rows={4} onChange={(text) => onChange({ ...block, text })} />
+      <input value={block.title} onChange={(event) => onTextChange({ ...block, title: event.target.value })} placeholder="제목" />
+      <RichTextArea value={block.text} rows={4} onChange={(text) => onTextChange({ ...block, text })} />
     </div>
   );
 }, (prev, next) => prev.block === next.block && prev.presets === next.presets);
@@ -2643,7 +2685,9 @@ const SceneEditor = React.memo(function SceneEditor({
   scene,
   presets,
   onChange,
+  onTextChange,
   onBlockChange,
+  onTextBlockChange,
   showReferences,
   collapsedIds,
   onToggleCollapse
@@ -2651,7 +2695,9 @@ const SceneEditor = React.memo(function SceneEditor({
   scene: SceneCardData;
   presets: CharacterPreset[];
   onChange: (scene: SceneCardData) => void;
+  onTextChange: (scene: SceneCardData) => void;
   onBlockChange: (sceneId: string, blockId: string, block: SceneBlock) => void;
+  onTextBlockChange: (sceneId: string, blockId: string, block: SceneBlock) => void;
   showReferences: boolean;
   collapsedIds: Set<string>;
   onToggleCollapse: (id: string) => void;
@@ -2668,7 +2714,7 @@ const SceneEditor = React.memo(function SceneEditor({
 
   return (
     <section className="sceneEditor">
-      <input className="sceneName" value={scene.name} onChange={(event) => onChange({ ...scene, name: event.target.value })} />
+      <input className="sceneName" value={scene.name} onChange={(event) => onTextChange({ ...scene, name: event.target.value })} />
       <div className="addRow">
         {(["sceneHeader", "character", "narration", "afterword", "tikitaka", "reference"] as SceneBlockType[]).map((type) => (
           <button key={type} type="button" onClick={() => onChange({ ...scene, blocks: [...scene.blocks, createSceneBlock(type, defaultCharacterId)] })}>
@@ -2717,6 +2763,7 @@ const SceneEditor = React.memo(function SceneEditor({
                 block={block}
                 presets={presets}
                 onChange={(nextBlock) => onBlockChange(scene.id, block.id, nextBlock)}
+                onTextChange={(nextBlock) => onTextBlockChange(scene.id, block.id, nextBlock)}
               />
             )}
           </div>
@@ -2759,6 +2806,9 @@ export default function TheaterToolBuilder() {
   const previewRef = useRef<HTMLIFrameElement>(null);
   const previewScrollRef = useRef({ x: 0, y: 0 });
   const hydratedRoomRef = useRef<string | null>(null);
+  const dataRef = useRef(data);
+  const pendingTextUndoSnapshotRef = useRef<TheaterData | null>(null);
+  const textUndoTimerRef = useRef<number | null>(null);
   const [previewBody, setPreviewBody] = useState(() => renderPreviewBody(data, presets));
   const [previewCss, setPreviewCss] = useState(() => renderCss(data));
   const isActivePublicRoom = isPublicSampleRoom(activeRoomCode);
@@ -2799,8 +2849,37 @@ export default function TheaterToolBuilder() {
     }
   };
 
+  const clearPendingTextUndo = () => {
+    pendingTextUndoSnapshotRef.current = null;
+    if (textUndoTimerRef.current !== null) {
+      window.clearTimeout(textUndoTimerRef.current);
+      textUndoTimerRef.current = null;
+    }
+  };
+
+  const flushPendingTextUndo = () => {
+    const snapshot = pendingTextUndoSnapshotRef.current;
+    clearPendingTextUndo();
+    if (!snapshot) return;
+    setHistory((items) => [...items.slice(-79), snapshot]);
+    setFuture([]);
+  };
+
+  const scheduleTextUndoFlush = () => {
+    if (textUndoTimerRef.current !== null) window.clearTimeout(textUndoTimerRef.current);
+    textUndoTimerRef.current = window.setTimeout(() => {
+      textUndoTimerRef.current = null;
+      flushPendingTextUndo();
+    }, 900);
+  };
+
+  useEffect(() => {
+    dataRef.current = data;
+  }, [data]);
+
   useEffect(() => {
     const roomCode = normalizeRoomCode(activeRoomCode);
+    clearPendingTextUndo();
     hydratedRoomRef.current = null;
     if (!roomCode) {
       setHistory([]);
@@ -2847,7 +2926,7 @@ export default function TheaterToolBuilder() {
         templatesBytes: getJsonByteLength(sampleTemplates),
         templatesCount: sampleTemplates.length,
         trashedTemplatesCount: 0,
-        maxTemplates: 2,
+        maxTemplates: sampleTemplates.length,
         maxTemplateBytes: TEMPLATE_LIMIT_BYTES
       });
       setImageStorageUsage({ imageBytes: 0, imageCount: 0, missingImages: 0, imageLimitBytes: ROOM_IMAGE_LIMIT_BYTES });
@@ -2923,6 +3002,8 @@ export default function TheaterToolBuilder() {
     };
   }, [activeRoomCode]);
 
+  useEffect(() => () => clearPendingTextUndo(), []);
+
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
       setPreviewBody(renderPreviewBody(data, presets));
@@ -2942,17 +3023,24 @@ export default function TheaterToolBuilder() {
     return () => window.clearTimeout(timeoutId);
   }, [activeRoomCode, data, presets]);
 
-  const commitData = (next: TheaterData | ((current: TheaterData) => TheaterData)) => {
+  const commitData = (next: TheaterData | ((current: TheaterData) => TheaterData), mode: CommitMode = "immediate") => {
+    if (mode === "immediate") flushPendingTextUndo();
     setData((current) => {
       const resolved = typeof next === "function" ? (next as (current: TheaterData) => TheaterData)(current) : next;
       if (resolved === current) return current;
-      setHistory((items) => [...items.slice(-79), current]);
-      setFuture([]);
+      if (mode === "textGroup") {
+        if (!pendingTextUndoSnapshotRef.current) pendingTextUndoSnapshotRef.current = current;
+        scheduleTextUndoFlush();
+      } else {
+        setHistory((items) => [...items.slice(-79), current]);
+        setFuture([]);
+      }
       return resolved;
     });
   };
 
   const undo = () => {
+    flushPendingTextUndo();
     setHistory((items) => {
       if (items.length === 0) return items;
       const previous = items[items.length - 1];
@@ -2963,6 +3051,7 @@ export default function TheaterToolBuilder() {
   };
 
   const redo = () => {
+    flushPendingTextUndo();
     setFuture((items) => {
       if (items.length === 0) return items;
       const next = items[0];
@@ -3077,6 +3166,10 @@ export default function TheaterToolBuilder() {
     commitData((current) => ({ ...current, blocks: current.blocks.map((block) => (block.id === id ? nextBlock : block)) }));
   };
 
+  const updateBlockText = (id: string, nextBlock: PageBlock) => {
+    commitData((current) => ({ ...current, blocks: current.blocks.map((block) => (block.id === id ? nextBlock : block)) }), "textGroup");
+  };
+
   const updateSceneBlock = (sceneId: string, blockId: string, nextBlock: SceneBlock) => {
     commitData((current) => ({
       ...current,
@@ -3088,6 +3181,22 @@ export default function TheaterToolBuilder() {
         };
       })
     }));
+  };
+
+  const updateSceneBlockText = (sceneId: string, blockId: string, nextBlock: SceneBlock) => {
+    commitData(
+      (current) => ({
+        ...current,
+        blocks: current.blocks.map((block) => {
+          if (block.id !== sceneId || !isSceneCard(block)) return block;
+          return {
+            ...block,
+            blocks: block.blocks.map((sceneBlock) => (sceneBlock.id === blockId ? nextBlock : sceneBlock))
+          };
+        })
+      }),
+      "textGroup"
+    );
   };
 
   const resetBodyFontSizes = () => {
@@ -3842,14 +3951,16 @@ export default function TheaterToolBuilder() {
                     scene={block}
                     presets={presets}
                     onChange={(scene) => updateBlock(block.id, scene)}
+                    onTextChange={(scene) => updateBlockText(block.id, scene)}
                     onBlockChange={updateSceneBlock}
+                    onTextBlockChange={updateSceneBlockText}
                     showReferences={showReferences}
                     collapsedIds={collapsedIds}
                     onToggleCollapse={toggleCollapsed}
                   />
                 ) : (
                   <div className="fieldGrid">
-                    <RichTextArea value={block.content} rows={block.moduleType === "narration" ? 5 : 2} onChange={(content) => updateBlock(block.id, { ...block, content })} />
+                    <RichTextArea value={block.content} rows={block.moduleType === "narration" ? 5 : 2} onChange={(content) => updateBlockText(block.id, { ...block, content })} />
                   </div>
                 )}
                 </article>
@@ -3942,6 +4053,40 @@ const appCss = `
   --scroll-track: #24131a;
   --scroll-thumb: #c88d98;
 }
+.appShell.theme-dcBlueWhite {
+  --app-bg: #ffffff;
+  --app-surface: #ffffff;
+  --app-surface-2: #f6f8fc;
+  --app-surface-3: #eef3fb;
+  --app-control: #ffffff;
+  --app-control-2: #f9fbff;
+  --app-border: #d8dfec;
+  --app-border-2: #c7d1e3;
+  --app-text: #1f2233;
+  --app-dim: #5d6680;
+  --app-faint: #8d98b6;
+  --app-accent: #2f3f8f;
+  --app-accent-soft: #4457ae;
+  --scroll-track: #eaf0f9;
+  --scroll-thumb: #2f3f8f;
+}
+.appShell.theme-sakuraPlum {
+  --app-bg: #fff8fb;
+  --app-surface: #ffffff;
+  --app-surface-2: #fff1f6;
+  --app-surface-3: #fae8f1;
+  --app-control: #fffafd;
+  --app-control-2: #fff4f9;
+  --app-border: #ecd6e1;
+  --app-border-2: #dbbfd0;
+  --app-text: #362632;
+  --app-dim: #7a5b6c;
+  --app-faint: #b392a7;
+  --app-accent: #b85f8f;
+  --app-accent-soft: #8f4f73;
+  --scroll-track: #f9ecf2;
+  --scroll-thumb: #b85f8f;
+}
 .appShell, .appShell * { box-sizing: border-box; }
 html {
   --page-scroll-track: #1b1916;
@@ -3961,10 +4106,20 @@ html:has(.appShell.theme-wineRose) {
   --page-scroll-track: #24131a;
   --page-scroll-thumb: #c88d98;
 }
+html:has(.appShell.theme-dcBlueWhite) {
+  --page-scroll-track: #eaf0f9;
+  --page-scroll-thumb: #2f3f8f;
+}
+html:has(.appShell.theme-sakuraPlum) {
+  --page-scroll-track: #f9ecf2;
+  --page-scroll-thumb: #b85f8f;
+}
 body { margin: 0; background: #12110f; color: #efe8dc; font-family: Pretendard, 'Noto Sans KR', system-ui, sans-serif; }
 body:has(.appShell.theme-ivoryGold) { background: #f3eee6; color: #28231e; }
 body:has(.appShell.theme-midnightBlue) { background: #0d1320; color: #d9e4f2; }
 body:has(.appShell.theme-wineRose) { background: #1d0f15; color: #f0dbe0; }
+body:has(.appShell.theme-dcBlueWhite) { background: #ffffff; color: #1f2233; }
+body:has(.appShell.theme-sakuraPlum) { background: #fff8fb; color: #362632; }
 * { scrollbar-color: var(--scroll-thumb, var(--page-scroll-thumb)) var(--scroll-track, var(--page-scroll-track)); scrollbar-width: thin; }
 ::-webkit-scrollbar { width: 12px; height: 12px; }
 ::-webkit-scrollbar-track { background: var(--scroll-track, var(--page-scroll-track)); }
