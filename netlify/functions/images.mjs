@@ -31,7 +31,9 @@ const roomRoot = (roomCode) => `rooms/${roomHash(roomCode)}/`;
 const roomPrefix = (roomCode) => `${roomRoot(roomCode)}templates/`;
 const roomImagePrefix = (roomCode) => `${roomRoot(roomCode)}images/`;
 const roomRateKey = (roomCode, windowId) => `${roomRoot(roomCode)}rate/upload-${windowId}.json`;
+const templateIndexKey = (roomCode) => `${roomRoot(roomCode)}template-index.json`;
 const characterLibraryKey = (roomCode) => `${roomRoot(roomCode)}character-library.json`;
+const characterLibraryMetaKey = (roomCode) => `${roomRoot(roomCode)}character-library-meta.json`;
 const imageManifestKey = (roomCode, imageKey) => `${roomImagePrefix(roomCode)}${encodeURIComponent(imageKey)}.json`;
 const adminRoomCodes = () => new Set(String(process.env.THEATER_ADMIN_CODES || "").split(",").map(normalizeRoomCode).filter(Boolean));
 const isAdminRoom = (roomCode) => adminRoomCodes().has(roomCode);
@@ -95,7 +97,26 @@ const readTemplates = async (templateStore, roomCode) => {
   );
 };
 
+const readJson = async (store, key) => {
+  try {
+    return await store.get(key, { type: "json" });
+  } catch {
+    return null;
+  }
+};
+
 const getRoomReferencedImageKeys = async (templateStore, roomCode) => {
+  const templateIndex = await readJson(templateStore, templateIndexKey(roomCode));
+  const libraryMeta = await readJson(templateStore, characterLibraryMetaKey(roomCode));
+  if (Array.isArray(templateIndex)) {
+    const keys = new Set();
+    templateIndex.forEach((item) => {
+      if (Array.isArray(item?.imageKeys)) item.imageKeys.filter((key) => typeof key === "string").forEach((key) => keys.add(key));
+    });
+    if (Array.isArray(libraryMeta?.imageKeys)) libraryMeta.imageKeys.filter((key) => typeof key === "string").forEach((key) => keys.add(key));
+    return keys;
+  }
+
   const keys = new Set();
   const templates = await readTemplates(templateStore, roomCode);
   templates.forEach((template) => collectImageKeys(template, keys));
@@ -110,11 +131,18 @@ const getRoomReferencedImageKeys = async (templateStore, roomCode) => {
 const getGlobalReferencedImageKeys = async (templateStore) => {
   const keys = new Set();
   const { blobs } = await templateStore.list({ prefix: "rooms/" });
-  const dataBlobs = blobs.filter((blob) => blob.key.includes("/templates/") || blob.key.endsWith("/character-library.json"));
+  const dataBlobs = blobs.filter((blob) => blob.key.endsWith("/template-index.json") || blob.key.endsWith("/character-library-meta.json"));
   await Promise.all(
     dataBlobs.map(async (blob) => {
       try {
-        collectImageKeys(await templateStore.get(blob.key, { type: "json" }), keys);
+        const data = await templateStore.get(blob.key, { type: "json" });
+        if (Array.isArray(data)) {
+          data.forEach((item) => {
+            if (Array.isArray(item?.imageKeys)) item.imageKeys.filter((key) => typeof key === "string").forEach((key) => keys.add(key));
+          });
+          return;
+        }
+        if (Array.isArray(data?.imageKeys)) data.imageKeys.filter((key) => typeof key === "string").forEach((key) => keys.add(key));
       } catch {
         // Ignore malformed or deleted records.
       }

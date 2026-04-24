@@ -21,10 +21,8 @@ import {
   Undo2,
   Upload
 } from "lucide-react";
-import { toPng } from "html-to-image";
-import publicSampleTemplate1 from "./publicSampleTemplate1.json";
-import publicSampleTemplate2 from "./publicSampleTemplate2.json";
-import publicSampleTemplate3 from "./publicSampleTemplate3.json";
+import TemplateStoragePanel from "./components/TemplateStoragePanel";
+import { getCachedRoomUpload } from "./utils/imageUploadCache";
 
 type ModuleType = "title" | "subtitle" | "narration";
 type SceneBlockType = "sceneHeader" | "character" | "narration" | "afterword" | "tikitaka" | "reference";
@@ -792,39 +790,51 @@ const sampleData: TheaterData = {
   ]
 };
 
-function createPublicSampleTemplates(): SavedTemplate[] {
-  const importedSampleTemplate = publicSampleTemplate1 as TheaterSaveFile & TheaterData;
-  const importedSampleTemplate2 = publicSampleTemplate2 as TheaterSaveFile & TheaterData;
-  const importedSampleTemplate3 = publicSampleTemplate3 as unknown as TheaterSaveFile & TheaterData;
-  const samplePresets = normalizeCharacterPresets(
-    Array.isArray(importedSampleTemplate.presets) ? importedSampleTemplate.presets : CHARACTER_PRESETS
-  );
-  const sampleTemplateData = normalizeTheaterData((importedSampleTemplate.data ?? importedSampleTemplate) as TheaterData);
-  const sampleTemplateData2 = normalizeTheaterData((importedSampleTemplate2.data ?? importedSampleTemplate2) as TheaterData);
-  const sampleTemplateData3 = normalizeTheaterData((importedSampleTemplate3.data ?? importedSampleTemplate3) as TheaterData);
-  return [
-    {
-      id: "sample-default-template",
-      name: "제작 참고 템플릿 1",
-      createdAt: "2026-04-23T00:00:00.000Z",
-      data: sampleTemplateData,
-      presets: samplePresets
-    },
-    {
-      id: "sample-scene-template",
-      name: "제작 참고 템플릿 2",
-      createdAt: "2026-04-23T00:00:00.000Z",
-      data: sampleTemplateData2,
-      presets: samplePresets
-    },
-    {
-      id: "sample-image-guide-template",
-      name: "이미지 설명서 3인방",
-      createdAt: "2026-04-24T00:00:00.000Z",
-      data: sampleTemplateData3,
-      presets: samplePresets
-    }
-  ];
+let publicSampleTemplatesPromise: Promise<SavedTemplate[]> | null = null;
+
+async function loadPublicSampleTemplates(): Promise<SavedTemplate[]> {
+  if (!publicSampleTemplatesPromise) {
+    publicSampleTemplatesPromise = (async () => {
+      const [{ default: publicSampleTemplate1 }, { default: publicSampleTemplate2 }, { default: publicSampleTemplate3 }] = await Promise.all([
+        import("./publicSampleTemplate1.json"),
+        import("./publicSampleTemplate2.json"),
+        import("./publicSampleTemplate3.json")
+      ]);
+      const importedSampleTemplate = publicSampleTemplate1 as TheaterSaveFile & TheaterData;
+      const importedSampleTemplate2 = publicSampleTemplate2 as TheaterSaveFile & TheaterData;
+      const importedSampleTemplate3Data = publicSampleTemplate3 as unknown as TheaterSaveFile & TheaterData;
+      const samplePresets = normalizeCharacterPresets(
+        Array.isArray(importedSampleTemplate.presets) ? importedSampleTemplate.presets : CHARACTER_PRESETS
+      );
+      const sampleTemplateData = normalizeTheaterData((importedSampleTemplate.data ?? importedSampleTemplate) as TheaterData);
+      const sampleTemplateData2 = normalizeTheaterData((importedSampleTemplate2.data ?? importedSampleTemplate2) as TheaterData);
+      const sampleTemplateData3 = normalizeTheaterData((importedSampleTemplate3Data.data ?? importedSampleTemplate3Data) as TheaterData);
+      return [
+        {
+          id: "sample-default-template",
+          name: "제작 참고 템플릿 1",
+          createdAt: "2026-04-23T00:00:00.000Z",
+          data: sampleTemplateData,
+          presets: samplePresets
+        },
+        {
+          id: "sample-scene-template",
+          name: "제작 참고 템플릿 2",
+          createdAt: "2026-04-23T00:00:00.000Z",
+          data: sampleTemplateData2,
+          presets: samplePresets
+        },
+        {
+          id: "sample-image-guide-template",
+          name: "이미지 설명서 3인방",
+          createdAt: "2026-04-24T00:00:00.000Z",
+          data: sampleTemplateData3,
+          presets: samplePresets
+        }
+      ];
+    })();
+  }
+  return publicSampleTemplatesPromise;
 }
 
 function summarizeTemplate(template: SavedTemplate): SavedTemplateSummary {
@@ -1969,14 +1979,16 @@ function createLimitedImageUploader(roomCode: string) {
   };
 
   return (imageData: string) =>
-    new Promise<ImagesApiResponse>((resolve, reject) => {
-      const run = () => {
-        activeCount += 1;
-        uploadImageData(roomCode, imageData).then(resolve, reject).finally(runNext);
-      };
-      if (activeCount < IMAGE_UPLOAD_CONCURRENCY) run();
-      else queue.push(run);
-    });
+    getCachedRoomUpload(roomCode, imageData, () =>
+      new Promise<ImagesApiResponse>((resolve, reject) => {
+        const run = () => {
+          activeCount += 1;
+          uploadImageData(roomCode, imageData).then(resolve, reject).finally(runNext);
+        };
+        if (activeCount < IMAGE_UPLOAD_CONCURRENCY) run();
+        else queue.push(run);
+      })
+    );
 }
 
 async function imageFieldsForRemote<T extends { imageData?: string; imageKey?: string; imageMimeType?: string }>(
@@ -2959,40 +2971,55 @@ export default function TheaterToolBuilder() {
 
     if (isPublicSampleRoom(roomCode)) {
       clearRoomDraft(roomCode);
-      const sampleTemplates = createPublicSampleTemplates();
-      const sampleLibrary = createCharacterPresetLibrary(CHARACTER_PRESETS);
-      const initialSampleTemplate = sampleTemplates[0] ?? null;
-      setHistory([]);
-      setFuture([]);
-      if (initialSampleTemplate) {
-        setData(normalizeTheaterData(initialSampleTemplate.data));
-        setPresets(normalizeCharacterPresets(initialSampleTemplate.presets));
-        setSelectedTemplateId(initialSampleTemplate.id);
-        setSelectedTemplateName(initialSampleTemplate.name);
-      } else {
-        setData(getInitialDefaultData());
-        setPresets(normalizeCharacterPresets(sampleLibrary.presets));
-        setSelectedTemplateId(null);
-        setSelectedTemplateName("");
-      }
-      setTemplates(sampleTemplates.map(summarizeTemplate));
-      setTrashedTemplates([]);
-      setActivityLog([]);
-      setTemplatesMessage("000000은 읽기 전용 샘플 코드입니다. 1번 템플릿을 불러왔습니다.");
-      setCharacterPresetLibraryMeta({ updatedAt: sampleLibrary.updatedAt, bytes: getJsonByteLength(sampleLibrary) });
-      setRoomStorageUsage({
-        characterLibraryBytes: getJsonByteLength(sampleLibrary),
-        characterLibraryLimitBytes: CHARACTER_LIBRARY_LIMIT_BYTES,
-        templatesBytes: getJsonByteLength(sampleTemplates),
-        templatesCount: sampleTemplates.length,
-        trashedTemplatesCount: 0,
-        maxTemplates: sampleTemplates.length,
-        maxTemplateBytes: TEMPLATE_LIMIT_BYTES
-      });
-      setImageStorageUsage({ imageBytes: 0, imageCount: 0, missingImages: 0, imageLimitBytes: ROOM_IMAGE_LIMIT_BYTES });
-      setCharacterLibraryMessage("공식 샘플 프리셋을 불러올 수 있습니다.");
-      hydratedRoomRef.current = roomCode;
-      return;
+      let cancelled = false;
+      setTemplatesLoading(true);
+      setTemplatesMessage("샘플 템플릿을 불러오는 중입니다.");
+      loadPublicSampleTemplates()
+        .then((sampleTemplates) => {
+          if (cancelled) return;
+          const sampleLibrary = createCharacterPresetLibrary(CHARACTER_PRESETS);
+          const initialSampleTemplate = sampleTemplates[0] ?? null;
+          setHistory([]);
+          setFuture([]);
+          if (initialSampleTemplate) {
+            setData(normalizeTheaterData(initialSampleTemplate.data));
+            setPresets(normalizeCharacterPresets(initialSampleTemplate.presets));
+            setSelectedTemplateId(initialSampleTemplate.id);
+            setSelectedTemplateName(initialSampleTemplate.name);
+          } else {
+            setData(getInitialDefaultData());
+            setPresets(normalizeCharacterPresets(sampleLibrary.presets));
+            setSelectedTemplateId(null);
+            setSelectedTemplateName("");
+          }
+          setTemplates(sampleTemplates.map(summarizeTemplate));
+          setTrashedTemplates([]);
+          setActivityLog([]);
+          setTemplatesMessage("000000은 읽기 전용 샘플 코드입니다. 1번 템플릿을 불러왔습니다.");
+          setCharacterPresetLibraryMeta({ updatedAt: sampleLibrary.updatedAt, bytes: getJsonByteLength(sampleLibrary) });
+          setRoomStorageUsage({
+            characterLibraryBytes: getJsonByteLength(sampleLibrary),
+            characterLibraryLimitBytes: CHARACTER_LIBRARY_LIMIT_BYTES,
+            templatesBytes: sampleTemplates.reduce((total, template) => total + getJsonByteLength(template), 0),
+            templatesCount: sampleTemplates.length,
+            trashedTemplatesCount: 0,
+            maxTemplates: sampleTemplates.length,
+            maxTemplateBytes: TEMPLATE_LIMIT_BYTES
+          });
+          setImageStorageUsage({ imageBytes: 0, imageCount: 0, missingImages: 0, imageLimitBytes: ROOM_IMAGE_LIMIT_BYTES });
+          setCharacterLibraryMessage("공식 샘플 프리셋을 불러올 수 있습니다.");
+          hydratedRoomRef.current = roomCode;
+        })
+        .catch((error) => {
+          if (cancelled) return;
+          setTemplatesMessage(error instanceof Error ? error.message : "샘플 템플릿을 불러오지 못했습니다.");
+        })
+        .finally(() => {
+          if (!cancelled) setTemplatesLoading(false);
+        });
+      return () => {
+        cancelled = true;
+      };
     }
 
     let cancelled = false;
@@ -3134,6 +3161,7 @@ export default function TheaterToolBuilder() {
     let captureFrame: HTMLIFrameElement | null = null;
     try {
       const exportHtml = await renderDownloadHtml(data, presets, theme);
+      const { toPng } = await import("html-to-image");
       const { frame, doc, target } = await createCaptureFrame(exportHtml);
       captureFrame = frame;
 
@@ -3460,7 +3488,7 @@ export default function TheaterToolBuilder() {
   const loadTemplate = async (template: SavedTemplateSummary) => {
     const roomCode = normalizeRoomCode(activeRoomCode);
     if (isPublicSampleRoom(roomCode)) {
-      const sampleTemplate = createPublicSampleTemplates().find((item) => item.id === template.id);
+      const sampleTemplate = (await loadPublicSampleTemplates()).find((item) => item.id === template.id);
       if (!sampleTemplate) return;
       commitData(normalizeTheaterData(sampleTemplate.data));
       setPresets(normalizeCharacterPresets(sampleTemplate.presets));
@@ -3827,190 +3855,44 @@ export default function TheaterToolBuilder() {
                 </div>
               </div>
             </section>
-            <section className="panel">
-              <div className="panelTitle">
-                <FileJson size={18} />
-                템플릿
-              </div>
-              <div className="roomBox">
-                <input
-                  value={roomInput}
-                  onChange={(event) => setRoomInput(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") enterTemplateRoom();
-                  }}
-                  placeholder="접속코드 6글자"
-                />
-                <button type="button" onClick={enterTemplateRoom} disabled={templatesLoading}>
-                  입장
-                </button>
-              </div>
-              {activeRoomCode ? (
-                <div className="roomStatus">
-                  <span>현재 코드: {activeRoomCode}</span>
-                  <button type="button" onClick={leaveTemplateRoom}>
-                    나가기
-                  </button>
-                </div>
-              ) : (
-                <div className="emptyTemplates">접속코드를 입력하면 공유 템플릿 저장소가 열립니다.</div>
-              )}
-              <div className="templateActionGrid">
-                <button type="button" onClick={() => saveCurrentTemplateWithImages()} disabled={!activeRoomCode || templatesLoading || isActivePublicRoom || isCurrentTemplateTooLarge}>
-                  <Plus size={15} />
-                  새 템플릿 저장
-                </button>
-                <button
-                  type="button"
-                  onClick={() => saveCurrentTemplateWithImages("update")}
-                  disabled={!activeRoomCode || templatesLoading || isActivePublicRoom || isCurrentTemplateTooLarge || !selectedTemplateId}
-                  title={selectedTemplateId ? `${selectedTemplateName || "현재 템플릿"}에 덮어쓰기` : "먼저 템플릿을 불러오거나 새로 저장하세요."}
-                >
-                  <FileJson size={15} />
-                  현재 템플릿 덮어쓰기
-                </button>
-              </div>
-              {selectedTemplateId && !isActivePublicRoom ? <div className="emptyTemplates">편집 중: {selectedTemplateName || "이름 없는 템플릿"}</div> : null}
-              <div className={`usageBox${isCurrentTemplateTooLarge ? " warning" : ""}`}>
-                <div className="usageText">
-                  <span>현재 회차</span>
-                  <strong>
-                    {formatBytes(currentTemplateBytes)} / {formatBytes(currentTemplateLimitBytes)}
-                  </strong>
-                </div>
-                <div className="usageTrack" aria-hidden="true">
-                  <span style={{ width: `${currentTemplateRatio}%` }} />
-                </div>
-              </div>
-              {activeRoomCode && roomStorageUsage ? (
-                <div className="usageBox">
-                  <div className="usageText">
-                    <span>템플릿 저장량</span>
-                    <strong>
-                      {roomStorageUsage.templatesCount} / {roomStorageUsage.maxTemplates}
-                    </strong>
-                  </div>
-                  <div className="usageText subtle">
-                    <span>템플릿 데이터</span>
-                    <strong>{formatBytes(roomStorageUsage.templatesBytes)}</strong>
-                  </div>
-                  {imageStorageUsage ? (
-                    <div className={`usageBox nestedUsage${isImageStorageTooLarge ? " warning" : ""}`}>
-                      <div className="usageText subtle">
-                        <span>이미지 저장량</span>
-                        <strong>
-                          {imageStorageUsage.imageCount}장 · {formatBytes(imageStorageUsage.imageBytes)} / {formatBytes(imageStorageLimitBytes)}
-                        </strong>
-                      </div>
-                      <div className="usageTrack" aria-hidden="true">
-                        <span style={{ width: `${imageStorageRatio}%` }} />
-                      </div>
-                      {imageStorageUsage.temporaryImageCount ? (
-                        <div className="usageText subtle">
-                          <span>임시 이미지</span>
-                          <strong>
-                            {imageStorageUsage.temporaryImageCount}장 · {formatBytes(imageStorageUsage.temporaryImageBytes ?? 0)}
-                          </strong>
-                        </div>
-                      ) : null}
-                      {imageStorageUsage.missingImages ? (
-                        <div className="usageText subtle">
-                          <span>누락 이미지</span>
-                          <strong>{imageStorageUsage.missingImages}장</strong>
-                        </div>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-              {templatesMessage ? <div className="templateMessage">{templatesMessage}</div> : null}
-              <div className="sectionHeaderRow">
-                <div className="usageText">
-                  <span>최근 템플릿</span>
-                  <strong>{roomStorageUsage?.templatesCount ?? templates.length}개</strong>
-                </div>
-                {hiddenTemplateCount > 0 ? (
-                  <button type="button" className="inlineToggleButton" onClick={toggleTemplateListExpanded} disabled={templatesLoading || isActivePublicRoom}>
-                    {isTemplateListExpanded ? "접기" : `... ${hiddenTemplateCount}개 더 보기`}
-                  </button>
-                ) : null}
-              </div>
-              {activeRoomCode && templates.length === 0 && !templatesLoading ? (
-                <div className="emptyTemplates">저장된 템플릿 없음</div>
-              ) : (
-                <div className="templateList">
-                  {templates.map((template) => (
-                    <div className="templateItem" key={template.id}>
-                      <button type="button" className="templateLoad" onClick={() => loadTemplate(template)} title="템플릿 불러오기">
-                        <span>{template.name}</span>
-                        <small>
-                          {new Date(template.createdAt).toLocaleString()}
-                          {template.versionCount ? ` · 버전 ${template.versionCount}` : ""}
-                          {template.bytes ? ` · ${formatBytes(template.bytes)}` : ""}
-                        </small>
-                      </button>
-                      <button type="button" className="iconButton" onClick={() => restoreLatestTemplateVersion(template.id)} aria-label="이전 버전으로 되돌리기" disabled={templatesLoading || isActivePublicRoom || !template.versionCount}>
-                        <RotateCcw size={15} />
-                      </button>
-                      <button type="button" className="iconButton danger" onClick={() => deleteTemplate(template.id)} aria-label="템플릿 삭제" disabled={templatesLoading || isActivePublicRoom}>
-                        <Trash2 size={15} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {(roomStorageUsage?.trashedTemplatesCount ?? trashedTemplates.length) ? (
-                <div className="trashBox">
-                  <div className="sectionHeaderRow">
-                    <div className="usageText">
-                      <span>휴지통</span>
-                      <strong>{roomStorageUsage?.trashedTemplatesCount ?? trashedTemplates.length}개</strong>
-                    </div>
-                    <button type="button" className="inlineToggleButton" onClick={toggleTrashExpanded} disabled={templatesLoading || isActivePublicRoom}>
-                      {isTrashExpanded ? "접기" : hiddenTrashCount > 0 ? `펼치기 (${hiddenTrashCount}개 숨김)` : "펼치기"}
-                    </button>
-                  </div>
-                  {isTrashExpanded ? (
-                    trashedTemplates.length ? (
-                      <div className="templateList">
-                        {trashedTemplates.map((template) => (
-                          <div className="templateItem" key={`trash-${template.id}`}>
-                            <button type="button" className="templateLoad" onClick={() => restoreTemplate(template.id)} disabled={templatesLoading || isActivePublicRoom} title="템플릿 복구">
-                              <span>{template.name}</span>
-                              <small>
-                                삭제 {template.deletedAt ? new Date(template.deletedAt).toLocaleString() : ""}
-                              </small>
-                            </button>
-                            <button type="button" className="iconButton" onClick={() => restoreTemplate(template.id)} aria-label="템플릿 복구" disabled={templatesLoading || isActivePublicRoom}>
-                              <Undo2 size={15} />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="emptyTemplates">휴지통이 비어 있습니다.</div>
-                    )
-                  ) : null}
-                </div>
-              ) : null}
-              {activityLog.length ? (
-                <div className="activityBox">
-                  <div className="usageText">
-                    <span>최근 활동</span>
-                    <strong>{activityLog.length}</strong>
-                  </div>
-                  <div className={`activityList${activityLog.length > 5 ? " scrollable" : ""}`}>
-                    {activityLog.map((entry) => (
-                      <div className="activityItem" key={entry.id}>
-                        <span>{formatActivityType(entry.type)}</span>
-                        <strong>{entry.targetName}</strong>
-                        <small>{new Date(entry.at).toLocaleString()}</small>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-            </section>
+            <TemplateStoragePanel
+              roomInput={roomInput}
+              activeRoomCode={activeRoomCode}
+              templatesLoading={templatesLoading}
+              isActivePublicRoom={isActivePublicRoom}
+              isCurrentTemplateTooLarge={isCurrentTemplateTooLarge}
+              roomStorageUsage={roomStorageUsage}
+              imageStorageUsage={imageStorageUsage}
+              imageStorageLimitBytes={imageStorageLimitBytes}
+              imageStorageRatio={imageStorageRatio}
+              isImageStorageTooLarge={isImageStorageTooLarge}
+              templatesMessage={templatesMessage}
+              templates={templates}
+              trashedTemplates={trashedTemplates}
+              activityLog={activityLog}
+              selectedTemplateId={selectedTemplateId}
+              selectedTemplateName={selectedTemplateName}
+              currentTemplateBytes={currentTemplateBytes}
+              currentTemplateLimitBytes={currentTemplateLimitBytes}
+              currentTemplateRatio={currentTemplateRatio}
+              hiddenTemplateCount={hiddenTemplateCount}
+              hiddenTrashCount={hiddenTrashCount}
+              isTemplateListExpanded={isTemplateListExpanded}
+              isTrashExpanded={isTrashExpanded}
+              formatBytes={formatBytes}
+              formatActivityType={formatActivityType}
+              setRoomInput={setRoomInput}
+              enterTemplateRoom={enterTemplateRoom}
+              leaveTemplateRoom={leaveTemplateRoom}
+              saveNewTemplate={() => saveCurrentTemplateWithImages()}
+              overwriteTemplate={() => saveCurrentTemplateWithImages("update")}
+              toggleTemplateListExpanded={toggleTemplateListExpanded}
+              toggleTrashExpanded={toggleTrashExpanded}
+              loadTemplate={loadTemplate}
+              restoreLatestTemplateVersion={restoreLatestTemplateVersion}
+              deleteTemplate={deleteTemplate}
+              restoreTemplate={restoreTemplate}
+            />
             <section className="panel">
               <div className="panelTitle">
                 <Plus size={18} />
@@ -4289,8 +4171,9 @@ textarea { resize: vertical; line-height: 1.6; }
 .templateMessage { padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, var(--app-accent) 12%, transparent); color: var(--app-accent-soft); font-size: 12px; line-height: 1.5; }
 .usageBox { display: grid; gap: 6px; padding: 8px; border: 1px solid var(--app-border); border-radius: 8px; background: var(--app-surface-2); }
 .nestedUsage { margin-top: 2px; padding: 7px; background: var(--app-surface-3); }
-.usageText { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--app-dim); font-size: 12px; line-height: 1.4; }
-.usageText strong { color: var(--app-accent-soft); font-size: 12px; white-space: nowrap; }
+.usageText { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; color: var(--app-dim); font-size: 12px; line-height: 1.4; }
+.usageText span { flex: 0 0 auto; white-space: nowrap; word-break: keep-all; }
+.usageText strong { margin-left: auto; min-width: 0; color: var(--app-accent-soft); font-size: 12px; white-space: nowrap; text-align: right; }
 .usageText.subtle strong { color: var(--app-dim); font-weight: 600; }
 .sectionHeaderRow { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .inlineToggleButton { min-height: 28px; padding: 4px 8px; font-size: 12px; white-space: nowrap; }
