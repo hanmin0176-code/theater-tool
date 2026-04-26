@@ -1771,102 +1771,80 @@ function measureElementHeight(element: Element) {
   return Math.ceil(Math.max(rect.height, (element as HTMLElement).offsetHeight || 0, (element as HTMLElement).scrollHeight || 0));
 }
 
-type CaptureHtmlChunk = { html: string; height: number };
+type CaptureSlice = { top: number; height: number };
 
-function packCaptureSegments(
-  segments: CaptureHtmlChunk[],
-  options: {
-    targetHeight: number;
-    preferredMinHeight: number;
-    preferredMaxHeight: number;
-  }
-) {
-  const chunks: CaptureHtmlChunk[] = [];
-  let currentHtmlParts: string[] = [];
-  let currentHeight = 0;
-
-  const pushChunk = () => {
-    if (currentHtmlParts.length === 0) return;
-    chunks.push({ html: currentHtmlParts.join(""), height: currentHeight });
-    currentHtmlParts = [];
-    currentHeight = 0;
-  };
-
-  segments.forEach((segment) => {
-    if (currentHtmlParts.length === 0) {
-      currentHtmlParts.push(segment.html);
-      currentHeight = segment.height;
-      return;
-    }
-
-    const projectedHeight = currentHeight + segment.height;
-    if (projectedHeight <= options.preferredMaxHeight) {
-      if (currentHeight >= options.targetHeight && currentHeight >= options.preferredMinHeight && projectedHeight > options.targetHeight) {
-        pushChunk();
-        currentHtmlParts.push(segment.html);
-        currentHeight = segment.height;
-        return;
-      }
-      currentHtmlParts.push(segment.html);
-      currentHeight = projectedHeight;
-      return;
-    }
-
-    pushChunk();
-    currentHtmlParts.push(segment.html);
-    currentHeight = segment.height;
+function getCaptureBlockBoundaries(target: HTMLElement, totalHeight: number) {
+  const targetRect = target.getBoundingClientRect();
+  const boundaries = new Set<number>([0, totalHeight]);
+  target.querySelectorAll<HTMLElement>("[data-preview-block-id]").forEach((element) => {
+    const rect = element.getBoundingClientRect();
+    const top = Math.round(rect.top - targetRect.top);
+    const bottom = Math.round(rect.bottom - targetRect.top);
+    if (bottom <= 0 || top >= totalHeight || bottom - top < 1) return;
+    boundaries.add(Math.max(0, Math.min(totalHeight, top)));
+    boundaries.add(Math.max(0, Math.min(totalHeight, bottom)));
   });
-
-  pushChunk();
-
-  if (chunks.length > 1) {
-    const lastChunk = chunks[chunks.length - 1];
-    const previousChunk = chunks[chunks.length - 2];
-    if (lastChunk.height < options.preferredMinHeight && previousChunk.height + lastChunk.height <= options.preferredMaxHeight) {
-      previousChunk.html += lastChunk.html;
-      previousChunk.height += lastChunk.height;
-      chunks.pop();
-    }
-  }
-
-  return chunks;
+  return Array.from(boundaries).sort((a, b) => a - b);
 }
 
-function buildCaptureChunkHtml(
-  target: HTMLElement,
-  preferredMinHeight: number,
-  preferredMaxHeight: number
-) {
-  const children = Array.from(target.children) as HTMLElement[];
-  const segments: CaptureHtmlChunk[] = [];
-  let moduleHtmlParts: string[] = [];
-  let moduleHeight = 0;
+function pickCaptureCut(boundaries: number[], currentTop: number, totalHeight: number, preferredMinHeight: number, preferredMaxHeight: number) {
+  const ideal = Math.min(totalHeight, currentTop + TARGET_CAPTURE_CHUNK_HEIGHT);
+  const minCut = Math.min(totalHeight, currentTop + preferredMinHeight);
+  const maxCut = Math.min(totalHeight, currentTop + preferredMaxHeight);
+  const forwardBoundaries = boundaries.filter((boundary) => boundary > currentTop);
+  if (forwardBoundaries.length === 0) return totalHeight;
+  if (totalHeight <= maxCut) return totalHeight;
 
-  const pushModuleSegment = () => {
-    if (moduleHtmlParts.length === 0) return;
-    segments.push({ html: moduleHtmlParts.join(""), height: moduleHeight });
-    moduleHtmlParts = [];
-    moduleHeight = 0;
-  };
+  const comfortable = forwardBoundaries.filter((boundary) => boundary >= minCut && boundary <= maxCut);
+  if (comfortable.length > 0) {
+    return comfortable.reduce((best, boundary) => (Math.abs(boundary - ideal) < Math.abs(best - ideal) ? boundary : best), comfortable[0]);
+  }
 
-  children.forEach((child) => {
-    const childHeight = Math.max(1, measureElementHeight(child));
-    if (child.classList.contains("scene")) {
-      pushModuleSegment();
-      segments.push({ html: child.outerHTML, height: childHeight });
-      return;
+  const beforeMax = forwardBoundaries.filter((boundary) => boundary <= maxCut);
+  if (beforeMax.length > 0) return beforeMax[beforeMax.length - 1];
+
+  return forwardBoundaries[0];
+}
+
+function buildCaptureSlices(target: HTMLElement, preferredMinHeight: number, preferredMaxHeight: number) {
+  const totalHeight = Math.max(1, measureElementHeight(target));
+  const boundaries = getCaptureBlockBoundaries(target, totalHeight);
+  const slices: CaptureSlice[] = [];
+  let currentTop = 0;
+
+  while (currentTop < totalHeight) {
+    const nextCut = pickCaptureCut(boundaries, currentTop, totalHeight, preferredMinHeight, preferredMaxHeight);
+    const safeCut = nextCut > currentTop ? nextCut : Math.min(totalHeight, currentTop + TARGET_CAPTURE_CHUNK_HEIGHT);
+    slices.push({ top: currentTop, height: Math.max(1, safeCut - currentTop) });
+    currentTop = safeCut;
+  }
+
+  if (slices.length > 1) {
+    const lastSlice = slices[slices.length - 1];
+    const previousSlice = slices[slices.length - 2];
+    if (lastSlice.height < preferredMinHeight && previousSlice.height + lastSlice.height <= preferredMaxHeight) {
+      previousSlice.height += lastSlice.height;
+      slices.pop();
     }
-    moduleHtmlParts.push(child.outerHTML);
-    moduleHeight += childHeight;
-  });
-  pushModuleSegment();
+  }
 
-  const chunks = packCaptureSegments(segments, {
-    targetHeight: TARGET_CAPTURE_CHUNK_HEIGHT,
-    preferredMinHeight,
-    preferredMaxHeight
-  });
-  return chunks.length > 0 ? chunks : [{ html: target.innerHTML, height: Math.max(1, measureElementHeight(target)) }];
+  return slices;
+}
+
+function applyCaptureSliceViewport(doc: Document, target: HTMLElement, slice: CaptureSlice) {
+  let content = doc.getElementById("capture-slice-content") as HTMLElement | null;
+  if (!content) {
+    content = doc.createElement("div");
+    content.id = "capture-slice-content";
+    while (target.firstChild) content.appendChild(target.firstChild);
+    target.appendChild(content);
+  }
+
+  target.style.height = `${slice.height}px`;
+  target.style.minHeight = `${slice.height}px`;
+  target.style.overflow = "hidden";
+  content.style.transform = `translateY(-${slice.top}px)`;
+  content.style.transformOrigin = "top left";
 }
 
 function createModuleBlock(moduleType: ModuleType, presetId: FontPresetId): ModuleBlock {
@@ -3615,21 +3593,20 @@ export default function TheaterToolBuilder() {
       const hardMaxChunkHeight = Math.max(2048, Math.floor(MAX_CAPTURE_CANVAS_HEIGHT / devicePixelRatio));
       const preferredMaxChunkHeight = Math.min(MAX_CAPTURE_CHUNK_HEIGHT, hardMaxChunkHeight);
       const preferredMinChunkHeight = Math.min(MIN_CAPTURE_CHUNK_HEIGHT, preferredMaxChunkHeight);
-      const chunkMarkup = buildCaptureChunkHtml(target, preferredMinChunkHeight, preferredMaxChunkHeight);
-      const partCount = chunkMarkup.length;
+      const captureSlices = buildCaptureSlices(target, preferredMinChunkHeight, preferredMaxChunkHeight);
+      const partCount = captureSlices.length;
       const pixelRatio = partCount > 1 ? devicePixelRatio : measuredHeight > 12000 ? 1 : devicePixelRatio;
       const captureStamp = makeCaptureStamp();
-      captureFrame.remove();
-      captureFrame = null;
 
-      for (let partIndex = 0; partIndex < chunkMarkup.length; partIndex += 1) {
-        const chunkFrameResult = await createCaptureFrame(renderStandaloneHtml(chunkMarkup[partIndex].html, data, theme));
-        captureFrame = chunkFrameResult.frame;
-        const chunkRect = chunkFrameResult.target.getBoundingClientRect();
-        const width = Math.ceil(chunkRect.width || chunkFrameResult.target.scrollWidth || measuredWidth);
-        const height = Math.ceil(Math.max(chunkFrameResult.target.scrollHeight, chunkRect.height));
+      for (let partIndex = 0; partIndex < captureSlices.length; partIndex += 1) {
+        const slice = captureSlices[partIndex];
+        applyCaptureSliceViewport(doc, target, slice);
+        frame.style.height = `${slice.height}px`;
+        await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+        const width = measuredWidth;
+        const height = slice.height;
         const chunkPixelRatio = Math.min(pixelRatio, Math.max(1, MAX_CAPTURE_CANVAS_HEIGHT / height));
-        const dataUrl = await toPng(chunkFrameResult.target, {
+        const dataUrl = await toPng(target, {
           cacheBust: true,
           pixelRatio: chunkPixelRatio,
           width,
@@ -3646,8 +3623,6 @@ export default function TheaterToolBuilder() {
         });
 
         downloadDataUrl(makeCaptureFilename(captureStamp, partIndex + 1, partCount), dataUrl);
-        captureFrame.remove();
-        captureFrame = null;
         if (partCount > 1 && partIndex < partCount - 1) {
           await new Promise<void>((resolve) => window.setTimeout(() => resolve(), 120));
         }
