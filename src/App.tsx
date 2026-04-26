@@ -4569,6 +4569,9 @@ export default function TheaterToolBuilder() {
           {isResizing ? <div className="dragShield" /> : null}
         </section>
       </div>
+      <footer className="rightsNotice">
+        캐릭터 이미지 및 관련 에셋의 권리는 각 원 권리자에게 있습니다. 마녀극장 제작기는 비공식 팬 제작 도구이며, 원 권리자와 공식적으로 제휴하거나 보증받은 서비스가 아닙니다.
+      </footer>
     </main>
   );
 }
@@ -4911,6 +4914,7 @@ textarea { resize: vertical; line-height: 1.6; }
 .stepperButtons button:hover { background: var(--app-accent); color: var(--app-bg); }
 .previewFrame { width: 100%; height: calc(100% - 42px); border: 0; background: var(--app-bg); display: block; }
 .dragShield { position: absolute; inset: 42px 0 0; cursor: col-resize; background: transparent; }
+.rightsNotice { margin: -10px 24px 30px; padding: 14px 16px; border: 1px solid var(--app-border); border-radius: 12px; background: color-mix(in srgb, var(--app-surface) 88%, transparent); color: var(--app-faint); font-size: 12px; line-height: 1.6; text-align: center; }
 @media (max-width: 1180px) {
   .splitWorkspace { grid-template-columns: 1fr; }
   .resizeHandle { display: none; }
@@ -4922,6 +4926,7 @@ textarea { resize: vertical; line-height: 1.6; }
   .toolbar { position: static; align-items: flex-start; flex-direction: column; }
   .toolbarActions { justify-content: flex-start; }
   .splitWorkspace { padding: 14px; }
+  .rightsNotice { margin: 0 14px 24px; text-align: left; }
   .editorPane { grid-template-columns: 1fr; }
   .characterGrid { grid-template-columns: 1fr; }
   .sceneImagePreview { grid-template-columns: 1fr; }
