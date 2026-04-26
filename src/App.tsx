@@ -12,6 +12,7 @@ import {
   GripVertical,
   ImagePlus,
   Italic,
+  Keyboard,
   Languages,
   Palette,
   Plus,
@@ -22,6 +23,7 @@ import {
   Upload
 } from "lucide-react";
 import TemplateStoragePanel from "./components/TemplateStoragePanel";
+import { SCENE_BACKGROUND_SAMPLES } from "./sceneBackgroundSamples";
 import { getCachedRoomUpload } from "./utils/imageUploadCache";
 
 type ModuleType = "title" | "subtitle" | "narration";
@@ -406,6 +408,25 @@ const SCENE_DEFAULT_FONT_SIZES = {
   narration: DEFAULT_TEXT_STYLE.fontSize ?? BASE_BODY_FONT_SIZE,
   afterword: BASE_AFTERWORD_FONT_SIZE + FONT_PRESETS[DEFAULT_FONT_PRESET_ID].bodyBonus,
   tikitaka: BASE_TIKITAKA_FONT_SIZE + FONT_PRESETS[DEFAULT_FONT_PRESET_ID].bodyBonus
+};
+
+const CHARACTER_DIALOGUE_COLORS: Record<string, string> = {
+  emma: "#B93D6E",
+  hiro: "#9A1E45",
+  anan: "#4E5F9D",
+  noa: "#1D7894",
+  leia: "#9A6B48",
+  miria: "#8F5D33",
+  mago: "#6E3EC5",
+  nanoka: "#596273",
+  arisa: "#B72035",
+  sherry: "#3F6DB7",
+  hanna: "#5F7A1E",
+  coco: "#C04E1D",
+  meruru: "#5F697D",
+  warden: "#4C475B",
+  yuki: "#6978B8",
+  guard: "#3C2835"
 };
 
 const LABEL_FONT_SIZES: LabelFontSizes = {
@@ -970,51 +991,46 @@ const sampleData: TheaterData = {
   ]
 };
 
-let publicSampleTemplatesPromise: Promise<SavedTemplate[]> | null = null;
+const PUBLIC_SAMPLE_TEMPLATE_SUMMARIES: SavedTemplateSummary[] = [
+  { id: "sample-default-template", name: "제작 참고 템플릿 1", createdAt: "2026-04-23T00:00:00.000Z" },
+  { id: "sample-scene-template", name: "제작 참고 템플릿 2", createdAt: "2026-04-23T00:00:00.000Z" },
+  { id: "sample-image-guide-template", name: "이미지 설명서 3인방", createdAt: "2026-04-24T00:00:00.000Z" }
+];
 
-async function loadPublicSampleTemplates(): Promise<SavedTemplate[]> {
-  if (!publicSampleTemplatesPromise) {
-    publicSampleTemplatesPromise = (async () => {
-      const [{ default: publicSampleTemplate1 }, { default: publicSampleTemplate2 }, { default: publicSampleTemplate3 }] = await Promise.all([
-        import("./publicSampleTemplate1.json"),
-        import("./publicSampleTemplate2.json"),
-        import("./publicSampleTemplate3.json")
-      ]);
-      const importedSampleTemplate = publicSampleTemplate1 as TheaterSaveFile & TheaterData;
-      const importedSampleTemplate2 = publicSampleTemplate2 as TheaterSaveFile & TheaterData;
-      const importedSampleTemplate3Data = publicSampleTemplate3 as unknown as TheaterSaveFile & TheaterData;
-      const samplePresets = normalizeCharacterPresets(
-        Array.isArray(importedSampleTemplate.presets) ? importedSampleTemplate.presets : CHARACTER_PRESETS
-      );
-      const sampleTemplateData = normalizeTheaterData((importedSampleTemplate.data ?? importedSampleTemplate) as TheaterData);
-      const sampleTemplateData2 = normalizeTheaterData((importedSampleTemplate2.data ?? importedSampleTemplate2) as TheaterData);
-      const sampleTemplateData3 = normalizeTheaterData((importedSampleTemplate3Data.data ?? importedSampleTemplate3Data) as TheaterData);
-      return [
-        {
-          id: "sample-default-template",
-          name: "제작 참고 템플릿 1",
-          createdAt: "2026-04-23T00:00:00.000Z",
-          data: sampleTemplateData,
-          presets: samplePresets
-        },
-        {
-          id: "sample-scene-template",
-          name: "제작 참고 템플릿 2",
-          createdAt: "2026-04-23T00:00:00.000Z",
-          data: sampleTemplateData2,
-          presets: samplePresets
-        },
-        {
-          id: "sample-image-guide-template",
-          name: "이미지 설명서 3인방",
-          createdAt: "2026-04-24T00:00:00.000Z",
-          data: sampleTemplateData3,
-          presets: samplePresets
-        }
-      ];
-    })();
+const publicSampleTemplateCache = new Map<string, Promise<SavedTemplate | null>>();
+
+async function importPublicSampleTemplate(templateId: string): Promise<TheaterSaveFile & TheaterData> {
+  if (templateId === "sample-default-template") {
+    const { default: template } = await import("./publicSampleTemplate1.json");
+    return template as TheaterSaveFile & TheaterData;
   }
-  return publicSampleTemplatesPromise;
+  if (templateId === "sample-scene-template") {
+    const { default: template } = await import("./publicSampleTemplate2.json");
+    return template as TheaterSaveFile & TheaterData;
+  }
+  if (templateId === "sample-image-guide-template") {
+    const { default: template } = await import("./publicSampleTemplate3.json");
+    return template as TheaterSaveFile & TheaterData;
+  }
+  throw new Error("샘플 템플릿을 찾을 수 없습니다.");
+}
+
+async function loadPublicSampleTemplate(templateId: string): Promise<SavedTemplate | null> {
+  const summary = PUBLIC_SAMPLE_TEMPLATE_SUMMARIES.find((item) => item.id === templateId);
+  if (!summary) return null;
+  if (!publicSampleTemplateCache.has(templateId)) {
+    publicSampleTemplateCache.set(
+      templateId,
+      importPublicSampleTemplate(templateId).then((importedTemplate) => ({
+        id: summary.id,
+        name: summary.name,
+        createdAt: summary.createdAt,
+        data: normalizeTheaterData((importedTemplate.data ?? importedTemplate) as TheaterData),
+        presets: normalizeCharacterPresets(Array.isArray(importedTemplate.presets) ? importedTemplate.presets : CHARACTER_PRESETS)
+      }))
+    );
+  }
+  return publicSampleTemplateCache.get(templateId)!;
 }
 
 function summarizeTemplate(template: SavedTemplate): SavedTemplateSummary {
@@ -1280,6 +1296,9 @@ strong { color: var(--text); font-weight: 700; }
 ruby { ruby-align: center; ruby-position: over; }
 rt { color: var(--accent); font-size: 0.58em; line-height: 1; font-weight: 600; letter-spacing: 0; }
 rp { color: var(--text-faint); font-size: 0.72em; }
+[data-preview-block-id] { scroll-margin: 72px; }
+[data-preview-block-id]:hover { cursor: pointer; }
+.preview-target-flash { outline: 3px solid var(--accent); box-shadow: 0 0 0 6px rgba(200,169,110,0.16); transition: outline-color 160ms ease, box-shadow 160ms ease; }
 `;
 
 function renderLabelFontCss(data: TheaterData) {
@@ -1304,6 +1323,10 @@ function renderCss(data: TheaterData) {
 
 function escapeHtml(str = "") {
   return str.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char] ?? char);
+}
+
+function previewBlockAttr(id: string) {
+  return ` data-preview-block-id="${escapeHtml(id)}"`;
 }
 
 function isSceneCard(block: PageBlock): block is SceneCardData {
@@ -1588,6 +1611,7 @@ function updateSceneBlockFontSizes(block: SceneBlock, action: FontSizeAction, pr
   const sceneDefaults = getSceneDefaultFontSizes(presetId);
   if (block.type === "reference") return block;
   if (block.type === "sceneHeader") {
+    const selectedSample = SCENE_BACKGROUND_SAMPLES.find((sample) => sample.fullSrc === block.imageData) ?? null;
     return {
       ...block,
       title: updateTextSizeTags(block.title, action, sceneDefaults.sceneTitle),
@@ -1637,22 +1661,46 @@ function updatePageBlockFontSizes(block: PageBlock, action: FontSizeAction, pres
   return { ...block, blocks: block.blocks.map((sceneBlock) => updateSceneBlockFontSizes(sceneBlock, action, presetId)) };
 }
 
+function updateCharacterDialogueColor(block: SceneBlock, mode: "reset" | "personal"): SceneBlock {
+  if (block.type !== "character") return block;
+  const { color: _color, ...styleWithoutColor } = block.textStyle ?? {};
+  if (mode === "reset") return { ...block, textStyle: withoutUndefined(styleWithoutColor) };
+  const color = CHARACTER_DIALOGUE_COLORS[normalizeCharacterId(block.characterId)];
+  return { ...block, textStyle: withoutUndefined({ ...styleWithoutColor, color }) };
+}
+
+function updatePageBlockDialogueColors(block: PageBlock, mode: "reset" | "personal"): PageBlock {
+  if (!isSceneCard(block)) return block;
+  return { ...block, blocks: block.blocks.map((sceneBlock) => updateCharacterDialogueColor(sceneBlock, mode)) };
+}
+
+function withSceneHeaderImage(block: SceneHeaderBlock, imageData?: string): SceneHeaderBlock {
+  return withoutUndefined({
+    ...block,
+    imageData,
+    imageKey: undefined,
+    imageMimeType: undefined
+  });
+}
+
 function renderModuleBlock(block: ModuleBlock) {
   const style = styleToCss(block.textStyle);
-  if (block.moduleType === "title") return `<div class="module-title"><h1 class="post-title"${style}>${renderRichText(block.content)}</h1></div>`;
-  if (block.moduleType === "subtitle") return `<div class="module-subtitle"><p class="post-subtitle"${style}>${renderRichText(block.content)}</p></div>`;
-  return `<p class="narrative"${style}>${renderRichText(block.content)}</p>`;
+  const blockAttr = previewBlockAttr(block.id);
+  if (block.moduleType === "title") return `<div class="module-title"${blockAttr}><h1 class="post-title"${style}>${renderRichText(block.content)}</h1></div>`;
+  if (block.moduleType === "subtitle") return `<div class="module-subtitle"${blockAttr}><p class="post-subtitle"${style}>${renderRichText(block.content)}</p></div>`;
+  return `<p class="narrative"${blockAttr}${style}>${renderRichText(block.content)}</p>`;
 }
 
 function renderSceneBlock(block: SceneBlock, presets: CharacterPreset[]) {
   if (block.type === "reference") return "";
+  const blockAttr = previewBlockAttr(block.id);
   if (block.type === "sceneHeader") {
     const image = block.imageData
       ? `<img src="${block.imageData}" alt="${escapeHtml(block.imageLabel || block.title)}" />`
       : `<span>${escapeHtml(block.imageLabel || "이미지 없음")}</span>`;
-    return `<div class="scene-header"><span class="scene-num">${escapeHtml(block.sceneNumber)}</span><span class="scene-title"${styleToCss(
+    return `<div class="scene-header"${blockAttr}><span class="scene-num">${escapeHtml(block.sceneNumber)}</span><span class="scene-title"${styleToCss(
       block.titleStyle
-    )}>${renderRichText(block.title)}</span></div><div class="scene-img-placeholder">${image}</div><div class="scene-desc"${styleToCss(
+    )}>${renderRichText(block.title)}</span></div><div class="scene-img-placeholder"${blockAttr}>${image}</div><div class="scene-desc"${blockAttr}${styleToCss(
       block.descStyle
     )}>${renderRichText(block.desc)}</div>`;
   }
@@ -1664,7 +1712,7 @@ function renderSceneBlock(block: SceneBlock, presets: CharacterPreset[]) {
     const avatar = avatarImage
       ? `<img class="avatar-img" style="--ring:${character.ring}" src="${avatarImage}" alt="${escapeHtml(character.name)}" />`
       : `<div class="avatar" style="--ring:${character.ring}">${escapeHtml(character.name.slice(0, 2))}</div>`;
-    return `<div class="dialogue-block"><div class="dialogue-row"><div class="char-portrait">${avatar}<div class="char-name">${escapeHtml(
+    return `<div class="dialogue-block"${blockAttr}><div class="dialogue-row"><div class="char-portrait">${avatar}<div class="char-name">${escapeHtml(
       character.name
     )}</div></div><div class="dialogue-content"><div class="dialogue-label">${escapeHtml(role)}</div><div class="dialogue-text"${styleToCss(
       block.textStyle
@@ -1672,14 +1720,14 @@ function renderSceneBlock(block: SceneBlock, presets: CharacterPreset[]) {
   }
   if (block.type === "narration") {
     const label = block.title.trim() ? `<div class="narration-label">${escapeHtml(block.title)}</div>` : "";
-    return `<div class="narration-row"><div class="narration-content">${label}<div class="narration-text"${styleToCss(
+    return `<div class="narration-row"${blockAttr}><div class="narration-content">${label}<div class="narration-text"${styleToCss(
       block.textStyle
     )}>${renderRichText(block.text)}</div></div></div>`;
   }
   if (block.type === "afterword") {
-    return `<div class="afterword"${styleToCss(block.textStyle)}><div class="afterword-title">${escapeHtml(block.title)}</div>${renderRichText(block.text)}</div>`;
+    return `<div class="afterword"${blockAttr}${styleToCss(block.textStyle)}><div class="afterword-title">${escapeHtml(block.title)}</div>${renderRichText(block.text)}</div>`;
   }
-  return `<div class="tikitaka"${styleToCss(block.textStyle)}><div class="tikitaka-title">${escapeHtml(block.title)}</div>${block.lines
+  return `<div class="tikitaka"${blockAttr}${styleToCss(block.textStyle)}><div class="tikitaka-title">${escapeHtml(block.title)}</div>${block.lines
     .map((line) => `<strong>${escapeHtml(line.speaker)}</strong>: ${renderRichText(line.text)}`)
     .join("<br />")}</div>`;
 }
@@ -1690,15 +1738,15 @@ function renderPreviewBody(data: TheaterData, presets: CharacterPreset[]) {
   if (blocks[0]?.kind === "module" && blocks[0].moduleType === "title" && blocks[1]?.kind === "module" && blocks[1].moduleType === "subtitle") {
     const title = blocks.shift() as ModuleBlock;
     const subtitle = blocks.shift() as ModuleBlock;
-    header = `<div class="post-header"><div class="post-title"${styleToCss(
+    header = `<div class="post-header"><div class="post-title"${previewBlockAttr(title.id)}${styleToCss(
       title.textStyle
-    )}>${renderRichText(title.content)}</div><div class="post-subtitle"${styleToCss(subtitle.textStyle)}>${renderRichText(subtitle.content)}</div></div>`;
+    )}>${renderRichText(title.content)}</div><div class="post-subtitle"${previewBlockAttr(subtitle.id)}${styleToCss(subtitle.textStyle)}>${renderRichText(subtitle.content)}</div></div>`;
   }
 
   const body = blocks
     .map((block) => {
       if (!isSceneCard(block)) return renderModuleBlock(block);
-      return `<section class="scene">${block.blocks.map((sceneBlock) => renderSceneBlock(sceneBlock, presets)).join("")}</section>`;
+      return `<section class="scene"${previewBlockAttr(block.id)}>${block.blocks.map((sceneBlock) => renderSceneBlock(sceneBlock, presets)).join("")}</section>`;
     })
     .join("\n");
   return `${header}${body}`;
@@ -1731,18 +1779,15 @@ function packCaptureSegments(
     targetHeight: number;
     preferredMinHeight: number;
     preferredMaxHeight: number;
-    hardMaxHeight: number;
-    wrap?: (html: string) => string;
   }
 ) {
   const chunks: CaptureHtmlChunk[] = [];
   let currentHtmlParts: string[] = [];
   let currentHeight = 0;
 
-  const wrapHtml = (html: string) => (options.wrap ? options.wrap(html) : html);
   const pushChunk = () => {
     if (currentHtmlParts.length === 0) return;
-    chunks.push({ html: wrapHtml(currentHtmlParts.join("")), height: currentHeight });
+    chunks.push({ html: currentHtmlParts.join(""), height: currentHeight });
     currentHtmlParts = [];
     currentHeight = 0;
   };
@@ -1778,7 +1823,7 @@ function packCaptureSegments(
     const lastChunk = chunks[chunks.length - 1];
     const previousChunk = chunks[chunks.length - 2];
     if (lastChunk.height < options.preferredMinHeight && previousChunk.height + lastChunk.height <= options.preferredMaxHeight) {
-      previousChunk.html = wrapHtml(stripSceneWrapper(previousChunk.html) + stripSceneWrapper(lastChunk.html));
+      previousChunk.html += lastChunk.html;
       previousChunk.height += lastChunk.height;
       chunks.pop();
     }
@@ -1787,75 +1832,39 @@ function packCaptureSegments(
   return chunks;
 }
 
-function stripSceneWrapper(html: string) {
-  return html.replace(/^<section class="scene">|<\/section>$/g, "");
-}
-
-function splitSceneHtml(
-  scene: HTMLElement,
-  preferredMinHeight: number,
-  preferredMaxHeight: number,
-  hardMaxHeight: number
-) {
-  const children = Array.from(scene.children) as HTMLElement[];
-  const repeatedHeader =
-    children[0]?.classList.contains("scene-header") && children[0] instanceof HTMLElement
-      ? { html: children[0].outerHTML, height: measureElementHeight(children[0]) }
-      : null;
-  const segments: CaptureHtmlChunk[] = [];
-  let currentHtmlParts: string[] = [];
-  let currentHeight = 0;
-  const pushSegment = () => {
-    if (currentHtmlParts.length === 0) return;
-    segments.push({ html: currentHtmlParts.join(""), height: currentHeight });
-    currentHtmlParts = [];
-    currentHeight = 0;
-  };
-  children.forEach((child, index) => {
-    const childHeight = Math.max(1, measureElementHeight(child));
-    if (currentHeight > 0 && currentHeight + childHeight > preferredMaxHeight) {
-      pushSegment();
-    }
-    if (segments.length > 0 && currentHtmlParts.length === 0 && repeatedHeader && index > 0) {
-      currentHtmlParts.push(repeatedHeader.html);
-      currentHeight += repeatedHeader.height;
-    }
-    currentHtmlParts.push(child.outerHTML);
-    currentHeight += childHeight;
-  });
-  pushSegment();
-  return packCaptureSegments(segments, {
-    targetHeight: TARGET_CAPTURE_CHUNK_HEIGHT,
-    preferredMinHeight,
-    preferredMaxHeight,
-    hardMaxHeight,
-    wrap: (html) => `<section class="scene">${html}</section>`
-  });
-}
-
 function buildCaptureChunkHtml(
   target: HTMLElement,
   preferredMinHeight: number,
-  preferredMaxHeight: number,
-  hardMaxHeight: number
+  preferredMaxHeight: number
 ) {
   const children = Array.from(target.children) as HTMLElement[];
   const segments: CaptureHtmlChunk[] = [];
+  let moduleHtmlParts: string[] = [];
+  let moduleHeight = 0;
+
+  const pushModuleSegment = () => {
+    if (moduleHtmlParts.length === 0) return;
+    segments.push({ html: moduleHtmlParts.join(""), height: moduleHeight });
+    moduleHtmlParts = [];
+    moduleHeight = 0;
+  };
 
   children.forEach((child) => {
     const childHeight = Math.max(1, measureElementHeight(child));
-    const nextSegments =
-      child.classList.contains("scene") && childHeight > preferredMaxHeight
-        ? splitSceneHtml(child, preferredMinHeight, preferredMaxHeight, hardMaxHeight)
-        : [{ html: child.outerHTML, height: childHeight }];
-    segments.push(...nextSegments);
+    if (child.classList.contains("scene")) {
+      pushModuleSegment();
+      segments.push({ html: child.outerHTML, height: childHeight });
+      return;
+    }
+    moduleHtmlParts.push(child.outerHTML);
+    moduleHeight += childHeight;
   });
+  pushModuleSegment();
 
   const chunks = packCaptureSegments(segments, {
     targetHeight: TARGET_CAPTURE_CHUNK_HEIGHT,
     preferredMinHeight,
-    preferredMaxHeight,
-    hardMaxHeight
+    preferredMaxHeight
   });
   return chunks.length > 0 ? chunks : [{ html: target.innerHTML, height: Math.max(1, measureElementHeight(target)) }];
 }
@@ -2852,6 +2861,7 @@ const SceneBlockEditor = React.memo(function SceneBlockEditor({
   onTextChange: (block: SceneBlock) => void;
 }) {
   const [isCharacterPickerOpen, setIsCharacterPickerOpen] = useState(false);
+  const [isSceneSampleOpen, setIsSceneSampleOpen] = useState(false);
   const [expandedProfileGroupIds, setExpandedProfileGroupIds] = useState<Set<string>>(() => loadStringSet(PROFILE_GROUP_EXPANDED_STORAGE_KEY));
   const toggleProfileGroup = (groupId: string) => {
     setExpandedProfileGroupIds((current) => {
@@ -2864,6 +2874,7 @@ const SceneBlockEditor = React.memo(function SceneBlockEditor({
   };
 
   if (block.type === "sceneHeader") {
+    const selectedSample = SCENE_BACKGROUND_SAMPLES.find((sample) => sample.fullSrc === block.imageData) ?? null;
     return (
       <div className="fieldGrid">
         <input value={block.sceneNumber} onChange={(event) => onTextChange({ ...block, sceneNumber: event.target.value })} placeholder="SCENE 01" />
@@ -2883,16 +2894,61 @@ const SceneBlockEditor = React.memo(function SceneBlockEditor({
               const file = event.target.files?.[0];
               input.value = "";
               if (!file) return;
-              readImageFile(file, (imageData) => onChange({ ...block, imageData }), SCENE_IMAGE_OPTIONS);
+              readImageFile(file, (imageData) => onChange(withSceneHeaderImage(block, imageData)), SCENE_IMAGE_OPTIONS);
             }}
           />
         </label>
         {block.imageData ? (
-          <button type="button" className="danger" onClick={() => onChange({ ...block, imageData: undefined })}>
+          <button type="button" className="danger" onClick={() => onChange(withSceneHeaderImage(block, undefined))}>
             <Trash2 size={15} />
             이미지 제거
           </button>
         ) : null}
+        {block.imageData ? (
+          <div className="sceneImagePreview">
+            <img src={block.imageData} alt={block.imageLabel || block.title || "Scene image"} loading="lazy" decoding="async" />
+            <div className="sceneImagePreviewMeta">
+              <strong>{selectedSample ? "현재 선택된 배경 샘플" : "현재 장면 이미지"}</strong>
+              <span>{selectedSample ? "기본 제공 배경 샘플이 적용되어 있습니다." : "업로드한 장면 이미지를 사용 중입니다."}</span>
+            </div>
+          </div>
+        ) : null}
+        <div className="sceneSampleSection">
+          <button type="button" className="sceneSampleToggle" onClick={() => setIsSceneSampleOpen((current) => !current)}>
+            <strong>배경 샘플</strong>
+            <span>{isSceneSampleOpen ? "접기" : "펼치기"}</span>
+            {isSceneSampleOpen ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+          </button>
+          {isSceneSampleOpen ? (
+            <>
+              <div className="sceneSampleHeader">
+                <span>썸네일만 먼저 불러오고, 클릭했을 때 실제 배경 이미지를 적용합니다.</span>
+              </div>
+              <div className="sceneSampleGrid">
+                {SCENE_BACKGROUND_SAMPLES.map((sample) => {
+                  const isActive = sample.fullSrc === block.imageData;
+                  return (
+                    <button
+                      key={sample.id}
+                      type="button"
+                      className={`sceneSampleTile${isActive ? " active" : ""}`}
+                      onClick={() => onChange(withSceneHeaderImage(block, sample.fullSrc))}
+                      title={sample.name}
+                    >
+                      <img
+                        src={sample.thumbnailSrc}
+                        alt={sample.name}
+                        loading="lazy"
+                        decoding="async"
+                        style={{ aspectRatio: `${sample.width} / ${sample.height}` }}
+                      />
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          ) : null}
+        </div>
         <RichTextArea value={block.desc} rows={4} onChange={(desc) => onTextChange({ ...block, desc })} />
       </div>
     );
@@ -3064,7 +3120,10 @@ const SceneEditor = React.memo(function SceneEditor({
   onTextBlockChange,
   showReferences,
   collapsedIds,
-  onToggleCollapse
+  highlightedBlockId,
+  onToggleCollapse,
+  onPreviewJump,
+  registerEditorBlock
 }: {
   scene: SceneCardData;
   presets: CharacterPreset[];
@@ -3075,7 +3134,10 @@ const SceneEditor = React.memo(function SceneEditor({
   onTextBlockChange: (sceneId: string, blockId: string, block: SceneBlock) => void;
   showReferences: boolean;
   collapsedIds: Set<string>;
+  highlightedBlockId: string | null;
   onToggleCollapse: (id: string) => void;
+  onPreviewJump: (id: string) => void;
+  registerEditorBlock: (id: string, node: HTMLElement | null) => void;
 }) {
   const defaultCharacterId = presets[0]?.id ?? "etc";
   const moveSceneBlockByDrop = (event: React.DragEvent, targetIndex: number) => {
@@ -3101,8 +3163,9 @@ const SceneEditor = React.memo(function SceneEditor({
       {scene.blocks.map((block, index) =>
         block.type === "reference" && !showReferences ? null : (
           <div
-            className={`blockEditor${collapsedIds.has(block.id) ? " collapsed" : ""}`}
+            className={`blockEditor${collapsedIds.has(block.id) ? " collapsed" : ""}${highlightedBlockId === block.id ? " jumpTarget" : ""}`}
             key={block.id}
+            ref={(node) => registerEditorBlock(block.id, node)}
             onDragOver={(event) => event.preventDefault()}
             onDrop={(event) => moveSceneBlockByDrop(event, index)}
           >
@@ -3124,6 +3187,9 @@ const SceneEditor = React.memo(function SceneEditor({
                 </button>
                 <button type="button" className="iconButton" onClick={() => onChange({ ...scene, blocks: moveArrayItem(scene.blocks, index, -1) })}>
                   <ArrowUp size={15} />
+                </button>
+                <button type="button" className="iconButton" onClick={() => onPreviewJump(block.id)} title="미리보기에서 이 블럭 보기">
+                  <Eye size={15} />
                 </button>
                 <button type="button" className="iconButton" onClick={() => onChange({ ...scene, blocks: moveArrayItem(scene.blocks, index, 1) })}>
                   <ArrowDown size={15} />
@@ -3150,7 +3216,8 @@ const SceneEditor = React.memo(function SceneEditor({
   prev.scene === next.scene &&
   prev.presets === next.presets &&
   prev.showReferences === next.showReferences &&
-  prev.collapsedIds === next.collapsedIds
+  prev.collapsedIds === next.collapsedIds &&
+  prev.highlightedBlockId === next.highlightedBlockId
 );
 
 export default function TheaterToolBuilder() {
@@ -3180,9 +3247,13 @@ export default function TheaterToolBuilder() {
   const [theme, setTheme] = useState<ThemeMode>("blackGold");
   const [showReferences, setShowReferences] = useState(true);
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(() => new Set());
+  const [highlightedEditorBlockId, setHighlightedEditorBlockId] = useState<string | null>(null);
+  const [isShortcutHelpOpen, setIsShortcutHelpOpen] = useState(false);
   const importRef = useRef<HTMLInputElement>(null);
   const splitRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLIFrameElement>(null);
+  const editorBlockRefs = useRef(new Map<string, HTMLElement>());
+  const jumpHighlightTimerRef = useRef<number | null>(null);
   const previewScrollRef = useRef({ x: 0, y: 0 });
   const hydratedRoomRef = useRef<string | null>(null);
   const dataRef = useRef(data);
@@ -3214,6 +3285,50 @@ export default function TheaterToolBuilder() {
       else next.add(id);
       return next;
     });
+  };
+  const registerEditorBlock = (id: string, node: HTMLElement | null) => {
+    if (node) editorBlockRefs.current.set(id, node);
+    else editorBlockRefs.current.delete(id);
+  };
+  const flashEditorBlock = (id: string) => {
+    if (jumpHighlightTimerRef.current !== null) window.clearTimeout(jumpHighlightTimerRef.current);
+    setHighlightedEditorBlockId(id);
+    jumpHighlightTimerRef.current = window.setTimeout(() => {
+      setHighlightedEditorBlockId((current) => (current === id ? null : current));
+      jumpHighlightTimerRef.current = null;
+    }, 1200);
+  };
+  const scrollEditorBlockIntoView = (id: string) => {
+    const target = editorBlockRefs.current.get(id);
+    if (!target) {
+      const parentScene = dataRef.current.blocks.find((block) => isSceneCard(block) && block.blocks.some((sceneBlock) => sceneBlock.id === id));
+      if (parentScene) {
+        setCollapsedIds((current) => {
+          if (!current.has(parentScene.id) && !current.has(id)) return current;
+          const next = new Set(current);
+          next.delete(parentScene.id);
+          next.delete(id);
+          return next;
+        });
+        window.requestAnimationFrame(() => scrollEditorBlockIntoView(id));
+      }
+      return;
+    }
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+    flashEditorBlock(id);
+  };
+  const flashPreviewBlock = (doc: Document, id: string) => {
+    const targets = Array.from(doc.querySelectorAll<HTMLElement>("[data-preview-block-id]")).filter((node) => node.dataset.previewBlockId === id);
+    targets.forEach((target) => target.classList.add("preview-target-flash"));
+    window.setTimeout(() => targets.forEach((target) => target.classList.remove("preview-target-flash")), 1200);
+  };
+  const scrollPreviewBlockIntoView = (id: string) => {
+    const doc = previewRef.current?.contentDocument;
+    if (!doc) return;
+    const target = Array.from(doc.querySelectorAll<HTMLElement>("[data-preview-block-id]")).find((node) => node.dataset.previewBlockId === id);
+    if (!target) return;
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+    flashPreviewBlock(doc, id);
   };
   const collapseAllBlocks = () => setCollapsedIds(new Set(collectCollapsibleBlockIds(data)));
   const expandAllBlocks = () => setCollapsedIds(new Set());
@@ -3315,53 +3430,32 @@ export default function TheaterToolBuilder() {
       clearRoomDraft(roomCode);
       let cancelled = false;
       setTemplatesLoading(true);
-      setTemplatesMessage("샘플 템플릿을 불러오는 중입니다.");
-      loadPublicSampleTemplates()
-        .then((sampleTemplates) => {
-          if (cancelled) return;
-          const sampleLibrary = createCharacterPresetLibrary(CHARACTER_PRESETS);
-          const initialSampleTemplate = sampleTemplates[0] ?? null;
-          setHistory([]);
-          setFuture([]);
-          if (initialSampleTemplate) {
-            setData(normalizeTheaterData(initialSampleTemplate.data));
-            setPresets(normalizeCharacterPresets(initialSampleTemplate.presets));
-            setSelectedTemplateId(initialSampleTemplate.id);
-            setSelectedTemplateName(initialSampleTemplate.name);
-          } else {
-            setData(getInitialDefaultData());
-            setPresets(normalizeCharacterPresets(sampleLibrary.presets));
-            setSelectedTemplateId(null);
-            setSelectedTemplateName("");
-          }
-          setTemplates(sampleTemplates.map(summarizeTemplate));
-          setTrashedTemplates([]);
-          setActivityLog([]);
-          setTemplatesMessage("000000은 읽기 전용 샘플 코드입니다. 1번 템플릿을 불러왔습니다.");
-          setCharacterPresetLibraryMeta({ updatedAt: sampleLibrary.updatedAt, bytes: getJsonByteLength(sampleLibrary) });
-          setRoomStorageUsage({
-            characterLibraryBytes: getJsonByteLength(sampleLibrary),
-            characterLibraryLimitBytes: CHARACTER_LIBRARY_LIMIT_BYTES,
-            templatesBytes: sampleTemplates.reduce((total, template) => total + getJsonByteLength(template), 0),
-            templatesCount: sampleTemplates.length,
-            trashedTemplatesCount: 0,
-            maxTemplates: sampleTemplates.length,
-            maxTemplateBytes: TEMPLATE_LIMIT_BYTES
-          });
-          setImageStorageUsage({ imageBytes: 0, imageCount: 0, missingImages: 0, imageLimitBytes: ROOM_IMAGE_LIMIT_BYTES });
-          setCharacterLibraryMessage("공식 샘플 프리셋을 불러올 수 있습니다.");
-          hydratedRoomRef.current = roomCode;
-        })
-        .catch((error) => {
-          if (cancelled) return;
-          setTemplatesMessage(error instanceof Error ? error.message : "샘플 템플릿을 불러오지 못했습니다.");
-        })
-        .finally(() => {
-          if (!cancelled) setTemplatesLoading(false);
-        });
-      return () => {
-        cancelled = true;
-      };
+      const sampleLibrary = createCharacterPresetLibrary(CHARACTER_PRESETS);
+      setHistory([]);
+      setFuture([]);
+      setData(getInitialDefaultData());
+      setPresets(normalizeCharacterPresets(sampleLibrary.presets));
+      setSelectedTemplateId(null);
+      setSelectedTemplateName("");
+      setTemplates(PUBLIC_SAMPLE_TEMPLATE_SUMMARIES);
+      setTrashedTemplates([]);
+      setActivityLog([]);
+      setTemplatesMessage("000000은 읽기 전용 샘플 코드입니다. 목록에서 템플릿을 클릭하면 해당 샘플만 불러옵니다.");
+      setCharacterPresetLibraryMeta({ updatedAt: sampleLibrary.updatedAt, bytes: getJsonByteLength(sampleLibrary) });
+      setRoomStorageUsage({
+        characterLibraryBytes: getJsonByteLength(sampleLibrary),
+        characterLibraryLimitBytes: CHARACTER_LIBRARY_LIMIT_BYTES,
+        templatesBytes: 0,
+        templatesCount: PUBLIC_SAMPLE_TEMPLATE_SUMMARIES.length,
+        trashedTemplatesCount: 0,
+        maxTemplates: PUBLIC_SAMPLE_TEMPLATE_SUMMARIES.length,
+        maxTemplateBytes: TEMPLATE_LIMIT_BYTES
+      });
+      setImageStorageUsage({ imageBytes: 0, imageCount: 0, missingImages: 0, imageLimitBytes: ROOM_IMAGE_LIMIT_BYTES });
+      setCharacterLibraryMessage("공식 샘플 프리셋을 불러왔습니다.");
+      hydratedRoomRef.current = roomCode;
+      setTemplatesLoading(false);
+      return;
     }
 
     let cancelled = false;
@@ -3439,7 +3533,13 @@ export default function TheaterToolBuilder() {
     };
   }, [activeRoomCode]);
 
-  useEffect(() => () => clearPendingTextUndo(), []);
+  useEffect(
+    () => () => {
+      clearPendingTextUndo();
+      if (jumpHighlightTimerRef.current !== null) window.clearTimeout(jumpHighlightTimerRef.current);
+    },
+    []
+  );
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -3515,7 +3615,7 @@ export default function TheaterToolBuilder() {
       const hardMaxChunkHeight = Math.max(2048, Math.floor(MAX_CAPTURE_CANVAS_HEIGHT / devicePixelRatio));
       const preferredMaxChunkHeight = Math.min(MAX_CAPTURE_CHUNK_HEIGHT, hardMaxChunkHeight);
       const preferredMinChunkHeight = Math.min(MIN_CAPTURE_CHUNK_HEIGHT, preferredMaxChunkHeight);
-      const chunkMarkup = buildCaptureChunkHtml(target, preferredMinChunkHeight, preferredMaxChunkHeight, hardMaxChunkHeight);
+      const chunkMarkup = buildCaptureChunkHtml(target, preferredMinChunkHeight, preferredMaxChunkHeight);
       const partCount = chunkMarkup.length;
       const pixelRatio = partCount > 1 ? devicePixelRatio : measuredHeight > 12000 ? 1 : devicePixelRatio;
       const captureStamp = makeCaptureStamp();
@@ -3528,9 +3628,10 @@ export default function TheaterToolBuilder() {
         const chunkRect = chunkFrameResult.target.getBoundingClientRect();
         const width = Math.ceil(chunkRect.width || chunkFrameResult.target.scrollWidth || measuredWidth);
         const height = Math.ceil(Math.max(chunkFrameResult.target.scrollHeight, chunkRect.height));
+        const chunkPixelRatio = Math.min(pixelRatio, Math.max(1, MAX_CAPTURE_CANVAS_HEIGHT / height));
         const dataUrl = await toPng(chunkFrameResult.target, {
           cacheBust: true,
-          pixelRatio,
+          pixelRatio: chunkPixelRatio,
           width,
           height,
           canvasWidth: width,
@@ -3599,11 +3700,34 @@ export default function TheaterToolBuilder() {
       doc.body.innerHTML = previewBody;
     }
 
+    const getPreviewJumpTargetId = (event: MouseEvent) => {
+      const directTarget = event.target instanceof Element ? event.target.closest<HTMLElement>("[data-preview-block-id]") : null;
+      if (directTarget?.dataset.previewBlockId) return directTarget.dataset.previewBlockId;
+      return doc
+        .elementsFromPoint(event.clientX, event.clientY)
+        .map((element) => element.closest<HTMLElement>("[data-preview-block-id]"))
+        .find((element): element is HTMLElement => Boolean(element?.dataset.previewBlockId))
+        ?.dataset.previewBlockId;
+    };
+
+    const handlePreviewJump = (event: MouseEvent) => {
+      if (!event.ctrlKey) return;
+      const blockId = getPreviewJumpTargetId(event);
+      if (!blockId) return;
+      event.preventDefault();
+      event.stopPropagation();
+      scrollEditorBlockIntoView(blockId);
+    };
+
+    doc.addEventListener("pointerdown", handlePreviewJump);
+
     const restoreScroll = () => {
       win.scrollTo(previewScrollRef.current.x, previewScrollRef.current.y);
     };
 
     window.requestAnimationFrame(restoreScroll);
+
+    return () => doc.removeEventListener("pointerdown", handlePreviewJump);
   }, [previewBody, previewCss, theme]);
 
   useLayoutEffect(() => {
@@ -3703,6 +3827,13 @@ export default function TheaterToolBuilder() {
     commitData((current) => ({
       ...current,
       portraitSize: clampPortraitSize((current.portraitSize ?? DEFAULT_PORTRAIT_SIZE) + delta * 4)
+    }));
+  };
+
+  const applyDialogueColorMode = (mode: "reset" | "personal") => {
+    commitData((current) => ({
+      ...current,
+      blocks: current.blocks.map((block) => updatePageBlockDialogueColors(block, mode))
     }));
   };
 
@@ -3880,12 +4011,24 @@ export default function TheaterToolBuilder() {
   const loadTemplate = async (template: SavedTemplateSummary) => {
     const roomCode = normalizeRoomCode(activeRoomCode);
     if (isPublicSampleRoom(roomCode)) {
-      const sampleTemplate = (await loadPublicSampleTemplates()).find((item) => item.id === template.id);
-      if (!sampleTemplate) return;
-      commitData(normalizeTheaterData(sampleTemplate.data));
-      setPresets(normalizeCharacterPresets(sampleTemplate.presets));
-      setSelectedTemplateId(sampleTemplate.id);
-      setSelectedTemplateName(sampleTemplate.name);
+      setTemplatesLoading(true);
+      setTemplatesMessage("샘플 템플릿을 불러오는 중입니다.");
+      try {
+        const sampleTemplate = await loadPublicSampleTemplate(template.id);
+        if (!sampleTemplate) {
+          setTemplatesMessage("샘플 템플릿을 찾을 수 없습니다.");
+          return;
+        }
+        commitData(normalizeTheaterData(sampleTemplate.data));
+        setPresets(normalizeCharacterPresets(sampleTemplate.presets));
+        setSelectedTemplateId(sampleTemplate.id);
+        setSelectedTemplateName(sampleTemplate.name);
+        setTemplatesMessage("");
+      } catch (loadError) {
+        setTemplatesMessage(loadError instanceof Error ? loadError.message : "샘플 템플릿을 불러오지 못했습니다.");
+      } finally {
+        setTemplatesLoading(false);
+      }
       return;
     }
 
@@ -4132,6 +4275,10 @@ export default function TheaterToolBuilder() {
           <p>왼쪽에서 편집하고 오른쪽에서 결과를 바로 확인합니다.</p>
         </div>
         <div className="toolbarActions">
+          <button type="button" onClick={() => setIsShortcutHelpOpen((current) => !current)} title="단축키 보기" aria-expanded={isShortcutHelpOpen}>
+            <Keyboard size={16} />
+            단축키
+          </button>
           <button type="button" onClick={undo} disabled={history.length === 0} title="Ctrl+Z">
             <Undo2 size={16} />
             실행 취소
@@ -4195,6 +4342,33 @@ export default function TheaterToolBuilder() {
             {isCapturing ? "캡처 중" : "PNG 캡처"}
           </button>
         </div>
+        {isShortcutHelpOpen ? (
+          <section className="shortcutHelpPanel" aria-label="단축키 설명서">
+            <div className="shortcutHelpTitle">단축키</div>
+            <dl>
+              <div>
+                <dt>Ctrl + Z</dt>
+                <dd>실행 취소</dd>
+              </div>
+              <div>
+                <dt>Ctrl + Y</dt>
+                <dd>다시 실행</dd>
+              </div>
+              <div>
+                <dt>Ctrl + Shift + Z</dt>
+                <dd>다시 실행</dd>
+              </div>
+              <div>
+                <dt>Ctrl + 미리보기 클릭</dt>
+                <dd>클릭한 미리보기 위치의 편집 블럭으로 이동</dd>
+              </div>
+              <div>
+                <dt>블럭 헤더의 눈 아이콘</dt>
+                <dd>해당 블럭의 미리보기 위치로 이동</dd>
+              </div>
+            </dl>
+          </section>
+        ) : null}
       </header>
 
       <div ref={splitRef} className={`splitWorkspace${isResizing ? " resizing" : ""}`} style={{ "--editor-percent": `${editorPercent}%` } as React.CSSProperties}>
@@ -4272,6 +4446,16 @@ export default function TheaterToolBuilder() {
                   </button>
                 </div>
               </div>
+              <div className="fontControlGroup">
+                <div className="fontColorButtons">
+                  <button type="button" onClick={() => applyDialogueColorMode("reset")} title="캐릭터 대사 색상을 현재 테마 기본색으로 되돌림">
+                    기본색으로 재설정
+                  </button>
+                  <button type="button" onClick={() => applyDialogueColorMode("personal")} title="캐릭터 대사에 캐릭터별 퍼스널 컬러를 적용">
+                    캐릭터 색 적용
+                  </button>
+                </div>
+              </div>
             </section>
             <TemplateStoragePanel
               roomInput={roomInput}
@@ -4336,8 +4520,9 @@ export default function TheaterToolBuilder() {
               const isCollapsed = collapsedIds.has(block.id);
               return (
                 <article
-                  className={`editorCard${isCollapsed ? " collapsed" : ""}`}
+                  className={`editorCard${isCollapsed ? " collapsed" : ""}${highlightedEditorBlockId === block.id ? " jumpTarget" : ""}`}
                   key={block.id}
+                  ref={(node) => registerEditorBlock(block.id, node)}
                   onDragOver={(event) => event.preventDefault()}
                   onDrop={(event) => movePageBlockByDrop(event, index)}
                 >
@@ -4360,6 +4545,9 @@ export default function TheaterToolBuilder() {
                     <button type="button" className="iconButton" onClick={() => commitData((current) => ({ ...current, blocks: moveArrayItem(current.blocks, index, -1) }))}>
                       <ArrowUp size={15} />
                     </button>
+                    <button type="button" className="iconButton" onClick={() => scrollPreviewBlockIntoView(block.id)} title="미리보기에서 이 블럭 보기">
+                      <Eye size={15} />
+                    </button>
                     <button type="button" className="iconButton" onClick={() => commitData((current) => ({ ...current, blocks: moveArrayItem(current.blocks, index, 1) }))}>
                       <ArrowDown size={15} />
                     </button>
@@ -4380,6 +4568,9 @@ export default function TheaterToolBuilder() {
                     showReferences={showReferences}
                     collapsedIds={collapsedIds}
                     onToggleCollapse={toggleCollapsed}
+                    highlightedBlockId={highlightedEditorBlockId}
+                    onPreviewJump={scrollPreviewBlockIntoView}
+                    registerEditorBlock={registerEditorBlock}
                   />
                 ) : (
                   <div className="fieldGrid">
@@ -4558,6 +4749,12 @@ textarea { resize: vertical; line-height: 1.6; }
 .toolbar h1 { margin: 0; font-size: 22px; }
 .toolbar p { margin: 2px 0 0; color: var(--app-dim); font-size: 13px; }
 .toolbarActions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.shortcutHelpPanel { position: absolute; top: calc(100% + 8px); right: 24px; z-index: 20; width: min(360px, calc(100vw - 32px)); padding: 14px; border: 1px solid var(--app-border-2); border-radius: 12px; background: var(--app-surface); box-shadow: 0 18px 48px rgba(0, 0, 0, 0.42); }
+.shortcutHelpTitle { margin-bottom: 10px; color: var(--app-accent-soft); font-weight: 800; }
+.shortcutHelpPanel dl { display: grid; gap: 8px; margin: 0; }
+.shortcutHelpPanel dl > div { display: grid; grid-template-columns: 136px minmax(0, 1fr); gap: 10px; align-items: start; padding: 8px; border: 1px solid var(--app-border); border-radius: 8px; background: var(--app-surface-2); }
+.shortcutHelpPanel dt { color: var(--app-accent-soft); font-size: 12px; font-weight: 800; }
+.shortcutHelpPanel dd { margin: 0; color: var(--app-dim); font-size: 12px; line-height: 1.45; }
 .themePicker { display: inline-flex; align-items: center; gap: 6px; padding: 3px 7px; border: 1px solid var(--app-border-2); border-radius: 999px; background: var(--app-control); font-size: 0; }
 .themeButton { width: 28px; min-height: 28px; height: 28px; padding: 0; border-radius: 999px; border-color: transparent; background: transparent; }
 .themeButton.active { border-color: var(--app-accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--app-accent) 22%, transparent); }
@@ -4582,6 +4779,8 @@ textarea { resize: vertical; line-height: 1.6; }
 .fontPresetButtons button { min-width: 0; font-size: 12px; white-space: nowrap; padding-left: 8px; padding-right: 8px; }
 .fontBatchButtons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .fontBatchButtons button { padding-left: 8px; padding-right: 8px; }
+.fontColorButtons { display: grid; grid-template-columns: 1fr; gap: 8px; }
+.fontColorButtons button { width: 100%; min-width: 0; justify-content: center; white-space: nowrap; padding-left: 8px; padding-right: 8px; }
 .emptyTemplates { padding: 10px; border: 1px dashed var(--app-border-2); border-radius: 8px; color: var(--app-faint); font-size: 12px; line-height: 1.45; text-align: center; word-break: keep-all; overflow-wrap: break-word; }
 .roomBox { display: grid; grid-template-columns: minmax(0, 1fr) 58px; gap: 7px; }
 .roomBox button { padding-left: 8px; padding-right: 8px; }
@@ -4687,6 +4886,7 @@ textarea { resize: vertical; line-height: 1.6; }
 .addRow { display: flex; flex-wrap: wrap; gap: 8px; }
 .blockEditor { background: var(--app-surface-2); }
 .editorCard.collapsed, .blockEditor.collapsed { background: color-mix(in srgb, var(--app-surface-2) 86%, var(--app-control) 14%); }
+.editorCard.jumpTarget, .blockEditor.jumpTarget { border-color: var(--app-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--app-accent) 26%, transparent), inset 0 1px 0 rgba(255, 240, 200, 0.08); }
 .editorCard.collapsed .blockHeader, .blockEditor.collapsed .blockHeader { margin-bottom: 0; }
 .blockEditor:has(.referenceEditor) { border-style: dashed; background: color-mix(in srgb, var(--app-surface-2) 78%, var(--app-accent) 10%); }
 .blockHeader { justify-content: flex-start; }
@@ -4698,6 +4898,21 @@ textarea { resize: vertical; line-height: 1.6; }
 .iconButton { width: 34px; min-height: 34px; padding: 0; }
 .danger:hover { border-color: #e37a7a; color: #ffb4b4; }
 .fieldGrid { display: grid; gap: 9px; min-width: 0; }
+.sceneImagePreview { display: grid; grid-template-columns: 136px minmax(0, 1fr); gap: 10px; padding: 10px; border: 1px solid var(--app-border); border-radius: 10px; background: var(--app-surface-2); }
+.sceneImagePreview img { width: 100%; aspect-ratio: 3 / 2; object-fit: cover; border-radius: 8px; display: block; background: var(--app-surface-3); }
+.sceneImagePreviewMeta { min-width: 0; display: grid; align-content: center; gap: 4px; }
+.sceneImagePreviewMeta strong { color: var(--app-accent-soft); font-size: 13px; }
+.sceneImagePreviewMeta span { color: var(--app-dim); font-size: 12px; line-height: 1.5; }
+.sceneSampleSection { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--app-border); border-radius: 10px; background: var(--app-surface-2); }
+.sceneSampleToggle { width: 100%; min-height: 38px; padding: 8px 10px; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; text-align: left; background: var(--app-control-2); }
+.sceneSampleToggle strong { color: var(--app-accent-soft); font-size: 13px; }
+.sceneSampleToggle span { color: var(--app-dim); font-size: 12px; }
+.sceneSampleHeader { display: grid; gap: 3px; }
+.sceneSampleHeader span { color: var(--app-dim); font-size: 12px; line-height: 1.5; }
+.sceneSampleGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); align-items: start; align-content: start; column-gap: 10px; row-gap: 10px; grid-auto-rows: max-content; max-height: 760px; overflow-y: auto; padding-right: 2px; }
+.sceneSampleTile { min-width: 0; min-height: 0; padding: 6px; display: block; border-radius: 12px; background: var(--app-control-2); overflow: hidden; }
+.sceneSampleTile img { width: 100%; height: auto; object-fit: contain; border-radius: 9px; display: block; background: var(--app-surface-3); }
+.sceneSampleTile.active { border-color: var(--app-accent); background: color-mix(in srgb, var(--app-control) 72%, var(--app-accent) 28%); }
 .referenceEditor textarea { color: var(--app-dim); font-size: 13px; background: var(--app-surface-3); }
 .lineEditor { display: grid; grid-template-columns: 110px minmax(0, 1fr) 34px; gap: 7px; }
 .lineEditorRich { display: grid; gap: 7px; padding: 8px; border: 1px solid var(--app-border); border-radius: 8px; background: var(--app-surface-3); }
@@ -4734,6 +4949,6 @@ textarea { resize: vertical; line-height: 1.6; }
   .splitWorkspace { padding: 14px; }
   .editorPane { grid-template-columns: 1fr; }
   .characterGrid { grid-template-columns: 1fr; }
+  .sceneImagePreview { grid-template-columns: 1fr; }
 }
 `;
-
